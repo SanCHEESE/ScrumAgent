@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Projects — Kabanchik</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    body {
+      background: #f3f4f6;
+      min-height: 100vh;
+    }
+
+    /* Top bar */
+    .topbar {
+      background: white;
+      border-bottom: 1px solid var(--border);
+      padding: 0 32px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .topbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--text-primary);
+    }
+
+    .topbar-logo {
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .topbar-user {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .topbar-avatar {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .topbar-signout {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-size: 12px;
+      padding: 5px 12px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .topbar-signout:hover {
+      background: var(--bg-content);
+      color: var(--text-primary);
+    }
+
+    /* Main content */
+    .main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 40px 24px;
+    }
+
+    /* Projects grid */
+    .projects-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+
+    @media (max-width: 600px) {
+      .projects-grid { grid-template-columns: 1fr; }
+    }
+
+    /* Project card */
+    .project-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
+      transition: box-shadow 0.15s, border-color 0.15s;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .project-card:hover {
+      box-shadow: var(--shadow-md);
+      border-color: #d1d5db;
+    }
+
+    .project-card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .project-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1.3;
+    }
+
+    .project-description {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+
+    .project-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .project-meta-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .project-meta-icon {
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .project-meta-value {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .project-card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+      margin-top: auto;
+    }
+
+    .sync-label {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Badge extensions for project status */
+    .badge-active {
+      background: var(--status-done-bg);
+      color: var(--status-done-text);
+    }
+
+    .badge-never_synced {
+      background: var(--status-pending-bg);
+      color: var(--status-pending-text);
+    }
+
+    /* Empty state */
+    .empty-state-wrap {
+      display: none;
+      grid-column: 1 / -1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="topbar-logo">🐗</span>
+      Kabanchik
+    </div>
+    <div class="topbar-right">
+      <div class="topbar-user">
+        <div class="topbar-avatar">AB</div>
+        <span>alex@municorn.com</span>
+      </div>
+      <button class="topbar-signout" onclick="signOut()">Sign out</button>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="main">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Projects</h1>
+        <p class="page-subtitle">Each project connects a team's meetings to Jira and Notion.</p>
+      </div>
+      <button class="btn btn-primary" onclick="navigate('projects-new.html')">
+        + Add Project
+      </button>
+    </div>
+
+    <div class="projects-grid" id="projects-grid">
+      <!-- Cards rendered by JS -->
+      <div class="empty-state-wrap" id="empty-state">
+        <div class="empty-state">
+          <div class="empty-icon">📭</div>
+          <h3>No projects yet</h3>
+          <p>Add your first project to start syncing meetings with Jira and Notion.</p>
+          <button class="btn btn-primary" style="margin-top:16px" onclick="navigate('projects-new.html')">
+            + Add Project
+          </button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="js/mock-data.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    // Auth guard
+    if (!isAuthed()) navigate('login.html');
+
+    function openProject(id) {
+      setCurrentProject(id);
+      navigate('project-chat.html');
+    }
+
+    function syncLabel(project) {
+      if (project.status === 'never_synced') return 'Never synced';
+      if (project.status === 'error') return 'Sync failed';
+      return project.lastSync ? 'Last synced ' + project.lastSync : '—';
+    }
+
+    function statusIcon(status) {
+      if (status === 'active') return '✓';
+      if (status === 'error') return '✕';
+      return '—';
+    }
+
+    function renderProjects() {
+      const grid = document.getElementById('projects-grid');
+      const emptyState = document.getElementById('empty-state');
+
+      if (MOCK_PROJECTS.length === 0) {
+        emptyState.style.display = 'block';
+        return;
+      }
+
+      MOCK_PROJECTS.forEach(project => {
+        const card = document.createElement('div');
+        card.className = 'project-card';
+        card.innerHTML = `
+          <div class="project-card-top">
+            <div>
+              <div class="project-name">${project.name}</div>
+              <div class="project-description">${project.description || ''}</div>
+            </div>
+            ${statusBadge(project.status)}
+          </div>
+          <div class="project-meta">
+            <div class="project-meta-row">
+              <span class="project-meta-icon">✉️</span>
+              <span class="project-meta-value">${project.email}</span>
+            </div>
+            ${project.status === 'error' ? `
+            <div class="project-meta-row" style="color: var(--danger)">
+              <span class="project-meta-icon">⚠️</span>
+              <span>Authentication error — re-connect Google account</span>
+            </div>` : ''}
+          </div>
+          <div class="project-card-footer">
+            <span class="sync-label">${syncLabel(project)}</span>
+            <button class="btn btn-secondary btn-sm" onclick="openProject('${project.id}')">
+              Open →
+            </button>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    renderProjects();
+  </script>
+</body>
+</html>

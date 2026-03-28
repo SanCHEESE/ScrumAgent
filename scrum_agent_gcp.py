@@ -6,7 +6,6 @@ Dependencies (requirements.txt):
     fastapi
     "uvicorn[standard]"
     sqlalchemy
-    psycopg2-binary
     google-auth
     google-auth-oauthlib
     google-api-python-client
@@ -14,7 +13,7 @@ Dependencies (requirements.txt):
     httpx
 
 Environment variables:
-    DATABASE_URL            postgresql://user:pass@/dbname?host=/cloudsql/project:region:instance
+    DATABASE_URL            sqlite:////data/db/telecom_scrum_agent.db  (Cloud Run with GCS FUSE)
     GOOGLE_CLIENT_ID        OAuth 2.0 client ID (Web application type)
     GOOGLE_CLIENT_SECRET    OAuth 2.0 client secret
     ANTHROPIC_API_KEY       Claude API key
@@ -31,14 +30,14 @@ Google OAuth setup:
     - Enable APIs: Google Calendar API, Google Meet API
 
 Deploy to Cloud Run:
-    gcloud run deploy scrum-agent \\
+    gcloud run deploy telecom-scrum-agent \\
       --source . \\
       --set-env-vars DATABASE_URL=...,GOOGLE_CLIENT_ID=...,SECRET_KEY=... \\
       --region us-central1 \\
       --min-instances 1
 
 Calendar auto-sync via Cloud Scheduler (call every 15 min):
-    gcloud scheduler jobs create http scrum-agent-sync \\
+    gcloud scheduler jobs create http telecom-scrum-agent-sync \\
       --schedule "*/15 * * * *" \\
       --uri {BASE_URL}/api/sync-all \\
       --oidc-service-account-email ...
@@ -71,7 +70,7 @@ from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./scrum_agent.db")
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./dev.db")
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")

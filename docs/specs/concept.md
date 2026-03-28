@@ -1,478 +1,153 @@
-# Скрам-агент для Google Meet, Jira и Notion
+# Telecom Scrum Agent — Концепция MVP
 
-## 1. Идея продукта
-
-Целевой продукт лучше проектировать не как одного «толстого» агента, а как платформу из трёх контуров:
-
-1. **Интеграции**
-2. **Агентный runtime**
-3. **Веб-приложение**
-
-Такой подход делает систему устойчивее, проще для масштабирования и понятнее в эксплуатации.
+**Домен:** @municorn.com
+**Сервисный аккаунт:** telecom.scrum.agent@municorn.com
 
 ---
 
-## 2. Что должен уметь продукт
+## 1. Что делает продукт
 
-Сервис крутится на хостинге и:
+Сервис на Cloud Run:
 
-- подключается к **Jira**
-- подключается к **Notion**
-- подключается к **Google Meet** по событию в календаре
-- имеет **веб-интерфейс** с авторизацией через Google account
-- имеет **чатовый режим**
-- показывает **лог действий и размышлений агента** в безопасной форме
-- строит **единую базу знаний** в режиме вопрос-ответ через RAG
-- отвечает в чате с **ссылками на источники**
-- записывает встречу
-- определяет, **кто говорил**
-- делает **скриншоты экрана/скринкаста** для понимания обсуждаемой задачи
-- после звонка делает более точную транскрибацию
-- обновляет Jira-задачи недостающей информацией
-- тегает ответственных
+- подключается к **Google Calendar + Meet** через сервисный аккаунт `telecom.scrum.agent@municorn.com`
+- подключается к **Jira** и **Notion** через MCP
+- имеет **веб-интерфейс** (вход через Google OAuth, только @municorn.com)
+- имеет **чатовый режим** с RAG по единой базе знаний
+- после встречи: транскрибация, summary, action items, decisions
+- предлагает обновления в Jira/Notion с подтверждением
 
 ---
 
-## 3. Рекомендуемая продуктовая декомпозиция
+## 2. Веб-приложение
 
-### 3.1 Веб-приложение
+4 раздела:
 
-Во фронте я бы выделил 4 основных раздела:
+### Chat
+- вопрос-ответ по единой базе знаний (встречи + Jira + Notion)
+- ответы с ссылками на источники
 
-#### Chat
-- вопрос-ответ по базе знаний
-- вопрос-ответ по конкретным встречам
-- ответы с источниками и ссылками
-
-#### Meetings
-- список встреч
-- статус обработки
-- транскрипт
-- summary
-- action items
+### Meetings
+- список встреч, статус обработки
+- транскрипт, summary, action items
 - связанные Jira issues и Notion pages
 
-#### Tasks / Sync
-- какие изменения агент предлагает внести в Jira/Notion
-- что уже применено
-- что ожидает подтверждения
+### Tasks / Sync
+- предложенные изменения в Jira/Notion
+- что применено, что ожидает подтверждения
 
-#### Agent Trace
-- последовательность шагов агента
-- какие инструменты вызваны
-- какие данные использованы
-- какие выводы сделаны
-- где уверенность низкая
+### Agent Trace
+- шаги агента, инструменты, источники данных, выводы
 
 ---
 
-## 4. Почему не стоит показывать raw chain-of-thought
+## 3. Доступ и авторизация
 
-Фраза «лог размышлений агента» звучит хорошо, но на практике лучше показывать не сырой internal reasoning, а:
-
-- **trace шагов**
-- **decision log**
-- **reasoning summary**
-- **список источников**
-- **обоснование действий**
-
-То есть пользователю показывается:
-
-- что агент прочитал
-- что понял
-- какие выводы сделал
-- какие изменения предлагает
-- почему предлагает именно это
-
-Это безопаснее и удобнее.
+- **Вход:** Google OAuth, только пользователи @municorn.com
+- **Calendar/Meet:** сервисный аккаунт `telecom.scrum.agent@municorn.com` с domain-wide delegation (calendar.readonly, meetings.space.readonly)
+- **База знаний:** единая, без скоупов — все видят всё, все могут спрашивать и редактировать
+- **Jira/Notion:** через MCP, общие API-токены
 
 ---
 
-## 5. Интеграции
+## 4. Интеграции
 
-## 5.1 Google Account / Google OAuth
+### Google Calendar + Meet
+1. Сервисный аккаунт синхронизирует календари пользователей @municorn.com
+2. Находит встречи с Meet-ссылкой
+3. После встречи забирает транскрипт/recording/notes через Google APIs
 
-Авторизация через Google — лучший вариант, потому что она сразу ложится на:
+### Jira
+- Через Atlassian Remote MCP
+- Чтение issues, предложение обновлений через human-in-the-loop
 
-- вход в веб-морду
-- доступ к Calendar
-- доступ к Meet-артефактам
-- доступ к пользовательскому контексту Workspace
-
-## 5.2 Google Calendar + Meet
-
-Логика работы:
-
-1. пользователь подключает Google account
-2. выдаёт нужные права
-3. система отслеживает события календаря
-4. если у события есть Meet-ссылка и пользователь включил обработку, создаётся job на обработку встречи
-
-## 5.3 Jira
-
-Jira лучше подключать через MCP-адаптер и отдельный integration layer, а не вшивать логику Jira прямо в агент.
-
-## 5.4 Notion
-
-С Notion та же идея: отдельный адаптер / MCP-клиент, чтобы агент работал через единый инструментальный слой.
+### Notion
+- Через Notion Remote MCP
+- Чтение страниц, создание meeting notes
 
 ---
 
-## 6. Как подключаться к Google Meet
+## 5. Получение данных встречи (MVP)
 
-Тут лучше сделать **плагинную архитектуру источников meeting data**.
+**Основной путь:** нативные артефакты Google (транскрипты, записи, заметки).
+Требует Google Workspace Business Plus+ с включённой транскрибацией.
 
-### Вариант A — нативные артефакты Google
-Самый стабильный путь:
-
-- записи встречи
-- транскрипты
-- заметки
-- smart notes
-
-Плюсы:
-- меньше хрупкости
-- лучше для корпоративных сценариев
-- меньше риска из-за изменения UI Meet
-
-Минусы:
-- зависит от тарифов и доступных фич Workspace
-
-### Вариант B — Media API / real-time ingest
-Если нужен real-time режим, можно использовать специализированный способ получения медиапотока.
-
-Плюсы:
-- real-time анализ
-- live-помощник во время звонка
-
-Минусы:
-- выше риск сложности интеграции
-- выше операционные ограничения
-- не стоит строить MVP только на этом
-
-### Вариант C — Headless browser participant
-Запасной вариант:
-
-- отдельный браузерный бот заходит в Meet как участник
-- пишет аудио/видео
-- читает подписи, DOM, captions, список участников
-- после звонка всё обрабатывается офлайн
-
-Плюсы:
-- даёт fallback
-- можно быстрее запустить MVP
-
-Минусы:
-- хрупкий UI-уровень
-- высокая стоимость сопровождения
-- выше риски по consent/compliance
-
-### Практический вывод
-
-Для MVP лучше поддержать:
-
-- **A как основной путь**
-- **C как fallback**
-- **B как future / experimental path**
+**Fallback (post-MVP):** headless browser participant.
 
 ---
 
-## 7. Как определять, кто говорил
+## 6. RAG и база знаний
 
-Не стоит рассчитывать на магию «браузер сам скажет, кто говорит» с идеальной точностью.
+Единая база знаний через **RAG-Anything** (LightRAG-based). Без разделения по пользователям — все данные доступны всей команде.
 
-Лучше делать гибрид:
+Индексируемые источники:
+- транскрипты встреч
+- summaries, decisions, action items
+- Jira issues
+- Notion pages
 
-1. во время встречи:
-   - сохранять список участников
-   - ловить активного говорящего
-   - сохранять подписи/субтитры/подсказки из браузера
-
-2. после встречи:
-   - делать точную ASR-транскрибацию
-   - запускать diarization
-   - совмещать diarization-сегменты с браузерными подсказками
-
-3. если уверенность низкая:
-   - помечать сегмент как uncertain speaker
-   - давать ручное подтверждение в UI
-
-### Итоговый pipeline speaker attribution
-- capture
-- diarization
-- ASR
-- browser identity alignment
-- confidence merge
+Knowledge graph строится автоматически (люди, встречи, задачи, решения, документы).
 
 ---
 
-## 8. Скриншоты скринкаста и визуальный анализ
+## 7. Пайплайн после встречи
 
-Идея хорошая, но нужно ограничение по объёму.
-
-Не нужно писать «весь экран всё время». Лучше:
-
-- делать snapshot раз в N секунд
-- снимать кадр при смене screen share
-- анализировать только кадры, где реально есть screen share
-- делать OCR и UI-entity extraction
-
-Что извлекаем:
-- Jira issue key
-- title
-- assignee
-- sprint
-- status
-- ошибки и логи
-- названия документов
-- номера задач и страниц
+1. **Ingest** — забрать metadata, transcript, notes
+2. **Анализ** — summary, action items, decisions, blockers, owners
+3. **Индексация** — всё в RAG-Anything
+4. **Предложения** — обновления в Jira/Notion
+5. **Подтверждение** — пользователь approve/reject через UI
+6. **Sync** — применить подтверждённые изменения через MCP
 
 ---
 
-## 9. RAG и единая база знаний
+## 8. Human-in-the-loop
 
-Один векторный индекс — слишком слабая модель для такого продукта.
+Автоматически (без подтверждения):
+- summary, link meeting ↔ issue, комментарии, пометка "mentioned in meeting"
 
-Нужна многоуровневая база знаний:
-
-### 9.1 User-private corpus
-- личные встречи
-- личные заметки
-- личные доступные документы
-
-### 9.2 Team/workspace corpus
-- общие страницы Notion
-- общие Jira issues
-- проектные артефакты
-
-### 9.3 Meeting corpus
-- transcript chunks
-- summary
-- decisions
-- screenshots / OCR
-- action items
-- linked tasks/docs
-
-### 9.4 Entity graph
-Сущности:
-- people
-- meetings
-- tasks
-- projects
-- decisions
-- documents
-
-Это нужно, чтобы отвечать на вопросы вида:
-
-- кто обещал сделать задачу
-- где обсуждали issue
-- какие встречи были по конкретному инциденту
-- какие решения уже принимались раньше
+Только после подтверждения:
+- смена assignee, статуса, due date, estimate, description, создание subtasks
 
 ---
 
-## 10. Базовые хранилища
+## 9. Технический стек (MVP)
 
-Для MVP достаточно:
-
-- **Postgres** — пользователи, встречи, задачи, связи, аудит
-- **Object storage** — аудио, видео, скриншоты, файлы
-- **Vector store** — embeddings и retrieval
-- **Search index** — полнотекстовый поиск по транскриптам и OCR
-- **Queue** — фоновые пайплайны
-
-Практичный старт:
-- Postgres + pgvector
-- S3-compatible storage
-- Redis / RabbitMQ / NATS
-
----
-
-## 11. Как агент должен работать после встречи
-
-После завершения созвона:
-
-1. **Ingest**
-   - подтянуть metadata встречи
-   - получить запись, transcript, notes или raw media
-
-2. **ASR + diarization**
-   - сделать точную транскрибацию
-   - разметить спикеров
-
-3. **Vision analysis**
-   - OCR
-   - извлечь сущности со screen share
-
-4. **Context retrieval**
-   - подтянуть связанные Jira tasks
-   - подтянуть страницы Notion
-   - подтянуть похожие прошлые встречи
-
-5. **Decision extraction**
-   - decisions
-   - blockers
-   - owners
-   - due dates
-   - unresolved questions
-
-6. **Action proposal**
-   - комментарии в Jira
-   - обновления описаний
-   - labels
-   - mentions
-   - заметки в Notion
-
-7. **Human-in-the-loop**
-   - сначала показать diff
-   - потом дать apply/approve
-
-8. **Sync**
-   - применить подтверждённые изменения через адаптеры / MCP
+| Компонент | Решение |
+|-----------|---------|
+| Backend | **FastAPI** (Python) |
+| Agent Runtime | **LangGraph** (Supervisor → sub-agents) |
+| LLM | **Anthropic Claude** |
+| RAG | **RAG-Anything** (LightRAG-based) |
+| MCP | **Atlassian Remote MCP** + **Notion Remote MCP** |
+| DB | **SQLite** (операционные данные) |
+| Storage | **Cloud Storage** (GCS FUSE mount) |
+| Auth | **Google OAuth** (только @municorn.com) |
+| Deploy | **Cloud Run** |
+| Scheduler | **Cloud Scheduler** (sync + backup) |
 
 ---
 
-## 12. Почему нужен human-in-the-loop
+## 10. Roadmap
 
-Автоматически и без подтверждения можно делать только низкорисковые действия:
+### MVP
+- Google login (@municorn.com only)
+- Calendar sync через сервисный аккаунт
+- Ingest meeting artifacts
+- RAG-чат по встречам + Jira + Notion
+- Suggested Jira/Notion updates + approval
 
-- черновик summary
-- link meeting ↔ issue
-- мягкие комментарии
-- пометка “mentioned in meeting”
+### v2 — Meeting Intelligence
+- Diarization (кто говорил)
+- OCR/screenshots со screen share
+- Cross-meeting memory
 
-А вот это лучше делать только после подтверждения:
-
-- смена assignee
-- смена статуса
-- due date
-- estimate
-- состав subtasks
-- изменение поля description с критичной информацией
-
----
-
-## 13. Рекомендуемый технический подход
-
-### Для MVP
-- Frontend: **Next.js**
-- Backend API: **FastAPI** или **Node.js / TypeScript**
-- Workers: **Python**
-- DB: **Postgres**
-- Queue: **Redis + worker system**
-- Storage: **S3-compatible**
-- Auth: **Google OAuth**
-- Deploy: **Cloud Run / ECS / отдельные workers**
-
-### Для production
-- разделить API и workers
-- вынести browser automation в отдельный пул
-- вынести vision/ASR jobs в выделенный контур
-- сделать adapter layer для всех интеграций
+### v3 — Real-time Assistant
+- Live meeting assistant
+- Live action item detection
+- Подсказки фасилитатору
 
 ---
 
-## 14. Где уместен ironclaw
+## 11. Итог
 
-Если ironclaw используется как агентный runtime, его можно оставить как:
-
-- orchestrator
-- tool-calling engine
-- tracing layer
-- policy/guardrails layer
-
-Но не стоит возлагать на него:
-
-- хранение данных
-- обработку медиа
-- OCR/vision pipeline
-- полноценную интеграционную логику
-
-То есть правильно так:
-
-- **ironclaw** — orchestration
-- **MCP/adapters** — доступ к Jira/Notion
-- **workers** — ingest/transcription/vision
-- **RAG layer** — retrieval/grounding
-- **web app** — UX и управление
-
----
-
-## 15. Безопасность и governance
-
-С первого дня стоит заложить:
-
-- минимальные OAuth scopes
-- отдельное хранение токенов
-- tenant isolation
-- retention policy для сырых медиа
-- consent banner и правила записи
-- audit log чтения/записи в Jira/Notion
-- redaction PII
-- политики доступа:
-  - какие встречи индексируются
-  - какие документы индексируются
-  - кто видит trace/logs
-  - кто может применять изменения
-
----
-
-## 16. Главные спорные места идеи
-
-### 16.1 “Показывать лог размышлений агента”
-Лучше показывать не raw reasoning, а structured trace.
-
-### 16.2 “Скриншоты всего скринкаста”
-Лучше делать throttled и event-driven snapshots.
-
-### 16.3 “Автоматически обновлять Jira”
-Лучше через suggested updates и approval workflow.
-
----
-
-## 17. Поэтапный roadmap
-
-### Этап 1 — MVP
-- Google login
-- Calendar sync
-- detect upcoming Meet
-- ingest meeting artifacts
-- чат по встречам + Jira + Notion
-- suggested Jira comments
-- ручное подтверждение
-
-### Этап 2 — Meeting intelligence
-- browser bot fallback
-- diarization
-- OCR/screenshots
-- entity graph
-- cross-meeting memory
-
-### Этап 3 — Near real-time assistant
-- live meeting assistant
-- live action item detection
-- retrieval во время встречи
-- подсказки фасилитатору
-
-### Этап 4 — Enterprise
-- SSO/SAML
-- org policies
-- retention/compliance
-- admin panel
-- fine-grained permissions
-
----
-
-## 18. Итог
-
-Идея жизнеспособна, если проектировать её не как одного «магического агента», а как платформу:
-
-- **meeting intelligence**
-- **knowledge assistant**
-- **controlled sync в Jira/Notion**
-- **human-in-the-loop**
-- **multi-layer RAG + entity graph**
-
-Лучшее описание продукта:
-
-> Не “один агент, который всё делает”, а “платформа для анализа встреч, работы с базой знаний и контролируемого обновления Jira/Notion”.
+> Платформа для анализа встреч, работы с базой знаний и контролируемого обновления Jira/Notion. Единая база знаний для всей команды @municorn.com.

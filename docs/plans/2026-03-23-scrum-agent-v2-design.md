@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-23
 **Status:** Approved
-**Scope:** RAG (Gemini Embedding 2) + LangGraph Orchestrator + MCP Clients (Jira + Notion) + Multi-module architecture
+**Scope:** RAG (RAG-Anything) + LangGraph Orchestrator + MCP Clients (Jira + Notion) + Multi-module architecture
 
 ---
 
@@ -16,7 +16,7 @@
 - Базовый чат (весь контекст в промпт, без RAG)
 
 **v2 добавляет:**
-1. RAG через Gemini Embedding 2 + pgvector
+1. RAG через RAG-Anything (LightRAG-based multimodal framework)
 2. LangGraph Supervisor как верхнеуровневый оркестратор
 3. Специализированные суб-агенты для scrum-модуля
 4. Jira + Notion через официальные MCP-серверы
@@ -52,8 +52,8 @@ flowchart TB
 
     subgraph INFRA["Shared Infrastructure"]
         direction LR
-        PG[("Cloud SQL\nPostgres + pgvector")]
-        EMB["Vertex AI\nGemini Embedding 2"]
+        RAG_S[("RAG-Anything\nKnowledge Base")]
+        SQLT[("SQLite\nOperational Data")]
         MCP_J["Atlassian\nRemote MCP"]
         MCP_N["Notion\nRemote MCP"]
         GAPI["Google APIs\nCalendar + Meet"]
@@ -61,8 +61,8 @@ flowchart TB
     end
 
     HTTP --> ORCH
-    SCRUM --> PG
-    SCRUM --> EMB
+    SCRUM --> RAG_S
+    SCRUM --> SQLT
     JA --> MCP_J
     NA --> MCP_N
     MA --> GAPI
@@ -135,7 +135,7 @@ class AgentModule(Protocol):
 @dataclass
 class SharedServices:
     db: Session                    # SQLAlchemy session factory
-    embed: EmbeddingService        # Gemini Embedding 2
+    rag: RAGAnythingService         # RAG-Anything knowledge base
     jira_mcp: MCPClient            # Atlassian Remote MCP
     notion_mcp: MCPClient          # Notion Remote MCP
     llm: ChatAnthropic             # LangChain-обёртка над Claude
@@ -237,66 +237,50 @@ Return JSON: {"next_agent": "<name>|END", "reasoning": "..."}
 
 ---
 
-## 5. RAG: Gemini Embedding 2 + pgvector
+## 5. RAG: RAG-Anything
 
-### Модель
+### Фреймворк
 
-- **Model ID:** `gemini-embedding-exp-03-07` (Gemini Embedding 2)
-- **Dimensions:** 3072
-- **Task types:** `RETRIEVAL_DOCUMENT` при индексации, `RETRIEVAL_QUERY` при поиске
-- **SDK:** `google-cloud-aiplatform` (Vertex AI)
+- **Библиотека:** [RAG-Anything](https://github.com/HKUDS/RAG-Anything) (LightRAG-based)
+- **Хранение:** файловая система — чанки, эмбеддинги, knowledge graph
+- **GCP-зависимости:** нет (всё локальное, монтируется через Cloud Storage FUSE)
+- **Пакет:** `rag-anything`
 
-### Схема
+### Хранение данных
 
-```sql
-CREATE EXTENSION IF NOT EXISTS vector;
-
-CREATE TABLE document_chunks (
-    id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    user_id     TEXT NOT NULL,
-    source_type TEXT NOT NULL,
-    -- meeting_transcript | meeting_summary | action_item
-    -- decision | jira_issue | notion_page
-    source_id   TEXT NOT NULL,
-    chunk_index INT  DEFAULT 0,
-    chunk_text  TEXT NOT NULL,
-    embedding   vector(3072),
-    metadata    JSONB DEFAULT '{}',
-    created_at  TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE INDEX ON document_chunks
-    USING ivfflat (embedding vector_cosine_ops)
-    WITH (lists = 100);
-
-CREATE INDEX ON document_chunks (user_id, source_type);
 ```
+/data/rag/
+  chunks/       ← сырые тексты: транскрипты, Jira, Notion
+  embeddings/   ← векторные представления
+  graph/        ← knowledge graph (сущности + связи)
+```
+
+RAG-Anything самостоятельно управляет chunking, embedding и graph construction.
+Никакой отдельной vector DB не требуется.
 
 ### Что и когда индексируется
 
-| Источник | Триггер | Чанкинг |
-|----------|---------|---------|
-| Transcript | после meeting processing | 512 токенов, overlap 50 |
-| Summary | после meeting processing | целиком |
-| Action items | после meeting processing | каждый item = 1 чанк |
-| Decisions | после meeting processing | каждое решение = 1 чанк |
-| Jira issue | при jira_agent sync | title + description целиком |
-| Notion page | при notion_agent sync | 512 токенов, overlap 50 |
+| Источник | Триггер | Описание |
+|----------|---------|----------|
+| Transcript | после meeting processing | полный текст транскрипта |
+| Summary | после meeting processing | summary встречи |
+| Action items | после meeting processing | каждый action item |
+| Decisions | после meeting processing | каждое решение |
+| Jira issue | при jira_agent sync | title + description |
+| Notion page | при notion_agent sync | полный текст страницы |
 
 ### Search
 
 ```python
-def rag_search(query: str, user_id: str, top_k: int = 5) -> list[dict]:
-    q_emb = embed(query, task_type="RETRIEVAL_QUERY")
-    rows = db.execute("""
-        SELECT chunk_text, source_type, source_id, metadata,
-               1 - (embedding <=> :qe) AS score
-        FROM document_chunks
-        WHERE user_id = :uid
-        ORDER BY embedding <=> :qe
-        LIMIT :k
-    """, {"qe": q_emb, "uid": user_id, "k": top_k})
-    return rows
+from rag_anything import RAGAnything
+
+rag = RAGAnything(working_dir="/data/rag")
+
+# Индексация
+rag.insert(text, metadata={"source_type": "transcript", "meeting_id": "..."})
+
+# Поиск
+results = rag.query("What was decided about the API redesign?", top_k=5)
 ```
 
 ---
@@ -333,10 +317,10 @@ notion_agent = create_react_agent(llm, notion_tools)
 ## 7. Структура файлов
 
 ```
-scrum-agent/
+telecom-scrum-agent/
 ├── scrum_agent_gcp.py          # точка входа: FastAPI + graph bootstrap + HTML
 ├── core.py                     # AgentRegistry, AgentState, SharedServices, LangGraph builder
-├── rag.py                      # EmbeddingService, chunk, embed, search
+├── rag.py                      # RAG-Anything wrapper: index, search
 ├── mcp_clients.py              # Atlassian + Notion MCP client init
 ├── modules/
 │   └── scrum/
@@ -353,7 +337,7 @@ scrum-agent/
 └── Dockerfile
 ```
 
-> **Для новых модулей:** создать `modules/<module_name>/`, реализовать `AgentModule` protocol, добавить `register(registry)` в `__init__.py`, добавить импорт в `scrum_agent_gcp.py`.
+> **Для новых модулей:** создать `modules/<module_name>/`, реализовать `AgentModule` protocol, добавить `register(registry)` в `__init__.py`, добавить import в `scrum_agent_gcp.py`.
 
 ---
 
@@ -361,7 +345,7 @@ scrum-agent/
 
 ```
 # уже есть в v1
-fastapi, uvicorn[standard], sqlalchemy, psycopg2-binary
+fastapi, uvicorn[standard], sqlalchemy
 google-auth, google-auth-oauthlib, google-api-python-client
 anthropic, httpx
 
@@ -371,8 +355,7 @@ langchain-anthropic          # ChatAnthropic для LangGraph
 langchain-core               # BaseTool, BaseMessage
 langchain-mcp-adapters       # MCP tools → LangChain tools
 mcp                          # MCP Python client
-google-cloud-aiplatform      # Vertex AI / Gemini Embedding 2
-pgvector                     # pgvector + SQLAlchemy
+rag-anything                 # RAG-Anything: multimodal RAG (LightRAG-based)
 ```
 
 ---
@@ -382,10 +365,9 @@ pgvector                     # pgvector + SQLAlchemy
 | Ресурс | Для чего |
 |--------|---------|
 | Cloud Run | основной сервис |
-| Cloud SQL (Postgres 15+) | данные + pgvector |
-| Vertex AI | Gemini Embedding 2 |
+| Cloud Storage | SQLite + RAG-Anything индексы (GCS FUSE mount) |
 | Secret Manager | токены и secrets |
-| Cloud Scheduler | автосинк календаря |
+| Cloud Scheduler | автосинк календаря + ночной бэкап |
 | Artifact Registry | docker images |
 
 Подробный список API, IAM ролей и инструкций — в `docs/plans/2026-03-23-gcp-setup.md`.

@@ -2,7 +2,6 @@
 fastapi
 uvicorn[standard]
 sqlalchemy
-psycopg2-binary
 google-auth
 google-auth-oauthlib
 google-api-python-client
@@ -15,5 +14,4 @@ langchain-anthropic          # ChatAnthropic wrapper for LangGraph
 langchain-core               # BaseTool, BaseMessage, add_messages
 langchain-mcp-adapters       # convert MCP tools → LangChain tools
 mcp                          # MCP Python client (Anthropic)
-google-cloud-aiplatform      # Vertex AI / Gemini Embedding 2
-pgvector                     # pgvector + SQLAlchemy integration
+rag-anything                 # RAG-Anything: multimodal RAG framework (LightRAG-based)

@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "ScrumAgent",
+  "project_id": "9922eaae-3fd7-4089-91c1-6608bb70dca8"
+}

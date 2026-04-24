@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — Kabanchik</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    body {
+      background: #f5f5f4;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    .login-card {
+      background: white;
+      border-radius: 16px;
+      padding: 48px 40px;
+      width: 360px;
+      text-align: center;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+
+    .login-logo {
+      font-size: 48px;
+      margin-bottom: 8px;
+      line-height: 1;
+    }
+
+    .login-title {
+      font-size: 24px;
+      font-weight: 800;
+      color: #1c1917;
+      margin-bottom: 4px;
+    }
+
+    .login-subtitle {
+      font-size: 14px;
+      color: #57534e;
+      margin-bottom: 32px;
+    }
+
+    .google-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      padding: 11px 20px;
+      border: 1px solid #d6d3d1;
+      border-radius: 8px;
+      background: white;
+      font-size: 14px;
+      font-weight: 500;
+      color: #1c1917;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .google-btn:hover:not(:disabled) {
+      background: #fafaf9;
+      border-color: #d6d3d1;
+    }
+
+    .google-btn:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+
+    .google-icon {
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .login-note {
+      font-size: 11px;
+      color: #a8a29e;
+      margin-top: 16px;
+    }
+
+    .login-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 24px 0;
+      color: #d6d3d1;
+      font-size: 12px;
+    }
+
+    .login-divider::before,
+    .login-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #d6d3d1;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="login-logo">🐗</div>
+    <div class="login-title">Kabanchik</div>
+    <div class="login-subtitle">Scrum agent for your team</div>
+
+    <div id="error-banner" class="alert alert-error" style="display:none; text-align:left;">
+      <span>⚠️</span>
+      <span>Only @municorn.com accounts are allowed.</span>
+    </div>
+
+    <button class="google-btn" id="signin-btn" onclick="handleSignIn()">
+      <span class="google-icon">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+          <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+          <path d="M3.964 10.706A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#FBBC05"/>
+          <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.962L3.964 7.294C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+        </svg>
+      </span>
+      Sign in with Google
+    </button>
+
+    <div class="login-note">Only @municorn.com accounts are allowed</div>
+  </div>
+
+  <script src="js/mock-data.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    // If already authed, redirect to projects
+    if (isAuthed()) {
+      navigate('projects.html');
+    }
+
+    function handleSignIn() {
+      const btn = document.getElementById('signin-btn');
+      const errorBanner = document.getElementById('error-banner');
+
+      errorBanner.style.display = 'none';
+      btn.innerHTML = '<span class="spinner"></span> Signing in…';
+      btn.disabled = true;
+
+      setTimeout(() => {
+        setAuthed(true);
+        setCurrentProject('p1');
+        navigate('projects.html');
+      }, 1200);
+    }
+  </script>
+</body>
+</html>

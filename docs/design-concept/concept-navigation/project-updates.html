@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proposed Updates — Kabanchik</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    /* Update card */
+    .update-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      background: white;
+      margin-bottom: 12px;
+      overflow: hidden;
+      transition: opacity 0.2s, background 0.2s;
+    }
+    .update-card.status-approved {
+      border-left: 4px solid #10b981;
+      background: #f0fdf4;
+    }
+    .update-card.status-rejected {
+      border-left: 4px solid #a8a29e;
+      opacity: 0.7;
+    }
+    .update-card.status-applied {
+      border-left: 4px solid var(--accent);
+    }
+    .update-card.status-failed {
+      border-left: 4px solid #ef4444;
+    }
+
+    .update-card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      flex-wrap: wrap;
+    }
+    .update-card-body {
+      padding: 0 16px 12px;
+    }
+    .update-target-icon { font-size: 16px; line-height: 1; }
+    .update-obj-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+    .update-type-label {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--accent-light);
+      color: var(--accent-hover);
+      font-weight: 500;
+    }
+    .update-actions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+
+    /* Checkbox */
+    .update-checkbox {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: var(--accent);
+      flex-shrink: 0;
+    }
+
+    /* Bulk bar */
+    .bulk-bar {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      background: var(--accent-wash);
+      border: 1px solid var(--accent-light);
+      border-radius: var(--radius);
+      margin-bottom: 14px;
+      font-size: 13px;
+      color: var(--accent-hover);
+      font-weight: 500;
+    }
+    .bulk-bar.visible { display: flex; }
+    .bulk-bar-count { margin-right: 4px; }
+
+    /* Filter groups */
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .filter-group-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-right: 2px;
+    }
+
+    /* Meeting select */
+    .meeting-select {
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 12px;
+      color: var(--text-secondary);
+      background: white;
+      outline: none;
+      cursor: pointer;
+    }
+    .meeting-select:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+    }
+  </style>
+</head>
+<body>
+<div class="app-layout">
+  <div class="sidebar" id="sidebar"></div>
+
+  <div class="content">
+    <div class="content-inner">
+
+      <!-- Page header -->
+      <div class="page-header">
+        <div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <h1 class="page-title">Proposed Updates</h1>
+            <span id="pending-count-badge" class="badge badge-pending" style="font-size:13px;padding:3px 10px"></span>
+          </div>
+          <p class="page-subtitle">Review and approve changes the agent wants to apply to Jira and Notion.</p>
+        </div>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="toolbar" id="toolbar" style="margin-bottom:8px;row-gap:8px">
+        <!-- Status filters -->
+        <div class="filter-group">
+          <span class="filter-group-label">Status</span>
+          <button class="filter-btn active" data-filter-type="status" data-value="all">All</button>
+          <button class="filter-btn" data-filter-type="status" data-value="pending">Pending</button>
+          <button class="filter-btn" data-filter-type="status" data-value="approved">Approved</button>
+          <button class="filter-btn" data-filter-type="status" data-value="rejected">Rejected</button>
+        </div>
+
+        <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
+
+        <!-- Target filters -->
+        <div class="filter-group">
+          <span class="filter-group-label">Target</span>
+          <button class="filter-btn active" data-filter-type="target" data-value="all">All</button>
+          <button class="filter-btn" data-filter-type="target" data-value="jira">🔵 Jira</button>
+          <button class="filter-btn" data-filter-type="target" data-value="notion">📋 Notion</button>
+        </div>
+
+        <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
+
+        <!-- Meeting dropdown -->
+        <select class="meeting-select" id="meeting-filter">
+          <option value="all">All meetings</option>
+        </select>
+      </div>
+
+      <!-- Bulk action bar -->
+      <div class="bulk-bar" id="bulk-bar">
+        <span class="bulk-bar-count" id="bulk-count-label">0 selected</span>
+        <button class="btn btn-success btn-sm" onclick="bulkApprove()">Approve selected</button>
+        <button class="btn btn-ghost btn-sm" onclick="bulkReject()">Reject selected</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearSelection()" style="margin-left:auto">✕ Clear</button>
+      </div>
+
+      <!-- Updates list -->
+      <div id="updates-list"></div>
+
+    </div>
+  </div>
+</div>
+
+<script src="js/mock-data.js"></script>
+<script src="js/app.js"></script>
+<script src="js/nav.js"></script>
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  // Mutable local copy of all updates
+  let updates = MOCK_UPDATES.map(u => Object.assign({}, u));
+
+  let filterStatus = 'all';
+  let filterTarget = 'all';
+  let filterMeeting = 'all';
+
+  // ── Escape helpers ─────────────────────────────────────────────────────────
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Filtering ──────────────────────────────────────────────────────────────
+  function getFilteredUpdates() {
+    return updates.filter(u => {
+      if (filterStatus !== 'all' && u.status !== filterStatus) return false;
+      if (filterTarget !== 'all' && u.target !== filterTarget) return false;
+      if (filterMeeting !== 'all' && u.meetingId !== filterMeeting) return false;
+      return true;
+    });
+  }
+
+  // ── Render single update card ──────────────────────────────────────────────
+  function renderUpdateCard(u) {
+    const targetIcon = u.target === 'jira' ? '🔵' : '📋';
+
+    const diffHtml = (u.before || u.after) ? `
+      <div class="diff-view" style="margin-top:10px">
+        <div class="diff-col before">
+          <div class="diff-label">Before</div>
+          <div class="diff-text">${u.before ? escapeHtml(u.before) : '<em style="opacity:0.5">empty</em>'}</div>
+        </div>
+        <div class="diff-col after">
+          <div class="diff-label">After</div>
+          <div class="diff-text">${u.after ? escapeHtml(u.after) : '<em style="opacity:0.5">empty</em>'}</div>
+        </div>
+      </div>
+    ` : '';
+
+    const actionButtons = u.status === 'pending'
+      ? `<button class="btn btn-success btn-sm" onclick="approveUpdate('${u.id}')">Approve</button>
+         <button class="btn btn-ghost btn-sm" onclick="rejectUpdate('${u.id}')">Reject</button>`
+      : updateStatusBadge(u.status);
+
+    const meetingChip = `<span style="font-size:11px;color:var(--text-muted);margin-left:4px">from <em>${escapeHtml(u.meetingTitle)}</em></span>`;
+
+    const cardStatusClass = u.status !== 'pending' ? `status-${u.status}` : '';
+
+    return `
+      <div class="update-card ${cardStatusClass}" id="update-card-${u.id}">
+        <div class="update-card-header">
+          <input type="checkbox" class="update-checkbox" data-id="${u.id}" onchange="onCheckboxChange()" ${u.status !== 'pending' ? 'disabled style="opacity:0.35"' : ''}>
+          <span class="update-target-icon">${targetIcon}</span>
+          <span class="update-obj-name">${escapeHtml(u.objectName)}</span>
+          <span class="update-type-label">${escapeHtml(u.updateType)}</span>
+          ${confidenceBadge(u.confidence)}
+          ${meetingChip}
+          <div class="update-actions" id="update-actions-${u.id}">${actionButtons}</div>
+        </div>
+        <div class="update-card-body">
+          ${diffHtml}
+          <div style="margin-top:8px">
+            <button class="accordion-btn" onclick="toggleAccordion(this)">
+              <span class="chevron">▼</span> Agent reasoning
+            </button>
+            <div class="accordion-content">
+              <p style="font-size:12px;color:var(--text-secondary);padding:8px 12px;background:#fafaf9;border-radius:var(--radius);margin-top:4px;line-height:1.6">${escapeHtml(u.reasoning)}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Render full list ───────────────────────────────────────────────────────
+  function renderList() {
+    const list = document.getElementById('updates-list');
+    const filtered = getFilteredUpdates();
+
+    if (filtered.length === 0) {
+      list.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">🔍</div>
+          <h3>No updates match your filters</h3>
+          <p>Try adjusting the status, target, or meeting filters above.</p>
+        </div>
+      `;
+    } else {
+      list.innerHTML = filtered.map(renderUpdateCard).join('');
+    }
+
+    updatePendingBadge();
+    updateBulkBar();
+  }
+
+  // ── Re-render a single card in-place ──────────────────────────────────────
+  function rerenderCard(u) {
+    const el = document.getElementById('update-card-' + u.id);
+    if (!el) return;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = renderUpdateCard(u);
+    el.replaceWith(tmp.firstElementChild);
+    updatePendingBadge();
+    updateBulkBar();
+  }
+
+  // ── Approve / Reject ───────────────────────────────────────────────────────
+  function approveUpdate(id) {
+    const u = updates.find(x => x.id === id);
+    if (u && u.status === 'pending') {
+      u.status = 'approved';
+      rerenderCard(u);
+    }
+  }
+
+  function rejectUpdate(id) {
+    const u = updates.find(x => x.id === id);
+    if (u && u.status === 'pending') {
+      u.status = 'rejected';
+      rerenderCard(u);
+    }
+  }
+
+  // ── Bulk actions ───────────────────────────────────────────────────────────
+  function getCheckedIds() {
+    return Array.from(document.querySelectorAll('.update-checkbox:checked')).map(cb => cb.dataset.id);
+  }
+
+  function bulkApprove() {
+    getCheckedIds().forEach(id => {
+      const u = updates.find(x => x.id === id);
+      if (u && u.status === 'pending') u.status = 'approved';
+    });
+    renderList();
+  }
+
+  function bulkReject() {
+    getCheckedIds().forEach(id => {
+      const u = updates.find(x => x.id === id);
+      if (u && u.status === 'pending') u.status = 'rejected';
+    });
+    renderList();
+  }
+
+  function clearSelection() {
+    document.querySelectorAll('.update-checkbox:checked').forEach(cb => { cb.checked = false; });
+    updateBulkBar();
+  }
+
+  function onCheckboxChange() {
+    updateBulkBar();
+  }
+
+  function updateBulkBar() {
+    const checked = getCheckedIds();
+    const bar = document.getElementById('bulk-bar');
+    const label = document.getElementById('bulk-count-label');
+    if (checked.length > 0) {
+      bar.classList.add('visible');
+      label.textContent = `${checked.length} selected`;
+    } else {
+      bar.classList.remove('visible');
+    }
+  }
+
+  // ── Pending badge ──────────────────────────────────────────────────────────
+  function updatePendingBadge() {
+    const count = updates.filter(u => u.status === 'pending').length;
+    const badge = document.getElementById('pending-count-badge');
+    badge.textContent = count === 1 ? '1 pending' : `${count} pending`;
+    badge.style.display = count === 0 ? 'none' : '';
+  }
+
+  // ── Filter buttons ─────────────────────────────────────────────────────────
+  function initFilterButtons() {
+    document.querySelectorAll('[data-filter-type]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const type = btn.dataset.filterType;
+        const value = btn.dataset.value;
+
+        // Update active state within the group
+        document.querySelectorAll(`[data-filter-type="${type}"]`).forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        if (type === 'status') filterStatus = value;
+        if (type === 'target') filterTarget = value;
+
+        renderList();
+      });
+    });
+
+    document.getElementById('meeting-filter').addEventListener('change', function() {
+      filterMeeting = this.value;
+      renderList();
+    });
+  }
+
+  // ── Meeting dropdown ───────────────────────────────────────────────────────
+  function populateMeetingFilter() {
+    const seen = new Map();
+    MOCK_UPDATES.forEach(u => {
+      if (!seen.has(u.meetingId)) seen.set(u.meetingId, u.meetingTitle);
+    });
+    const select = document.getElementById('meeting-filter');
+    seen.forEach((title, id) => {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = title;
+      select.appendChild(opt);
+    });
+  }
+
+  // ── Boot ───────────────────────────────────────────────────────────────────
+  mountNav('updates');
+  populateMeetingFilter();
+  initFilterButtons();
+  renderList();
+</script>
+</body>
+</html>

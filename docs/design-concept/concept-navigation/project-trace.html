@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Agent Trace — Kabanchik</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .trace-list-header {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--border);
+      background: white;
+      flex-shrink: 0;
+    }
+    .trace-list-header h3 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .trace-list-header .run-count {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+    .trace-run-datetime {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 3px;
+    }
+    .trace-run-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 6px;
+    }
+    .trace-run-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .trace-run-duration {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-left: auto;
+    }
+    .trace-detail-empty {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: var(--text-muted);
+    }
+    .trace-detail-empty-icon {
+      font-size: 40px;
+      line-height: 1;
+    }
+    .trace-detail-empty p {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    .trace-detail-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      background: white;
+      flex-shrink: 0;
+    }
+    .trace-detail-header-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .trace-detail-header-top h2 {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .trace-summary-bar {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .trace-steps-container {
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .step-header-num {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--accent-light);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .step-header-name {
+      flex: 1;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+    .step-header-duration {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-right: 8px;
+    }
+    .step-chevron {
+      font-size: 11px;
+      color: var(--text-muted);
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+    .step-body.open + .step-header .step-chevron,
+    .step-item-trace.open .step-chevron {
+      transform: rotate(180deg);
+    }
+    .step-section-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+    .step-section pre {
+      background: #fafaf9;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 8px 10px;
+      font-size: 11.5px;
+      font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+      color: var(--text-primary);
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .tool-call-card {
+      background: #fafaf9;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      margin-bottom: 8px;
+    }
+    .tool-call-card:last-child {
+      margin-bottom: 0;
+    }
+    .tool-call-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+    .tool-call-sublabel {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+    .tool-call-pre {
+      background: #f5f5f4;
+      border: 1px solid #d6d3d1;
+      border-radius: 3px;
+      padding: 6px 8px;
+      font-size: 11px;
+      font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin-bottom: 8px;
+    }
+    .tool-call-pre:last-child {
+      margin-bottom: 0;
+    }
+    .trace-list {
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+    .trace-list-scroll {
+      overflow-y: auto;
+      flex: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-layout">
+    <div class="sidebar" id="sidebar"></div>
+    <div class="content" style="display:flex;overflow:hidden;">
+      <div class="trace-layout" style="flex:1;overflow:hidden;">
+
+        <!-- Left panel -->
+        <div class="trace-list" id="trace-list" style="display:flex;flex-direction:column;">
+          <div class="trace-list-header">
+            <h3>Agent Runs <span class="run-count" id="run-count"></span></h3>
+          </div>
+          <div class="trace-list-scroll" id="trace-list-items"></div>
+        </div>
+
+        <!-- Right panel -->
+        <div class="trace-detail" id="trace-detail">
+          <div class="trace-detail-empty" id="trace-empty">
+            <div class="trace-detail-empty-icon">🔍</div>
+            <p>Select a run to view details</p>
+          </div>
+          <div id="trace-content" style="display:none;flex-direction:column;height:100%;">
+            <div class="trace-detail-header" id="trace-detail-header"></div>
+            <div class="trace-steps-container" id="trace-steps"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="js/mock-data.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/nav.js"></script>
+  <script>
+    mountNav('trace');
+
+    let activeRunId = null;
+
+    function countTools(steps) {
+      let total = 0;
+      steps.forEach(s => { total += (s.tools || []).length; });
+      return total;
+    }
+
+    function renderList() {
+      const container = document.getElementById('trace-list-items');
+      document.getElementById('run-count').textContent = `(${MOCK_TRACE_RUNS.length})`;
+
+      container.innerHTML = MOCK_TRACE_RUNS.map(run => `
+        <div
+          class="trace-run-item${activeRunId === run.id ? ' active' : ''}"
+          id="run-item-${run.id}"
+          onclick="selectRun('${run.id}')"
+          style="cursor:pointer;"
+        >
+          <div class="trace-run-datetime">${run.datetime}</div>
+          <div class="trace-run-title">${escapeHtml(run.meetingTitle)}</div>
+          <div class="trace-run-meta">
+            ${statusBadge(run.status)}
+            <span class="trace-run-duration">${run.duration}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderDetail(run) {
+      const emptyEl = document.getElementById('trace-empty');
+      const contentEl = document.getElementById('trace-content');
+
+      emptyEl.style.display = 'none';
+      contentEl.style.display = 'flex';
+
+      // Header
+      const toolCount = countTools(run.steps);
+      document.getElementById('trace-detail-header').innerHTML = `
+        <div class="trace-detail-header-top">
+          <h2>${escapeHtml(run.meetingTitle)}</h2>
+          ${statusBadge(run.status)}
+          <span style="font-size:12px;color:var(--text-muted);margin-left:4px;">${run.duration}</span>
+        </div>
+        <div class="trace-summary-bar">
+          Model: <strong>${run.agentModel}</strong>
+          &nbsp;·&nbsp; Steps: <strong>${run.steps.length}</strong>
+          &nbsp;·&nbsp; Tools used: <strong>${toolCount}</strong>
+          &nbsp;·&nbsp; Total: <strong>${run.duration}</strong>
+        </div>
+      `;
+
+      // Steps
+      const stepsContainer = document.getElementById('trace-steps');
+      stepsContainer.innerHTML = run.steps.map((step, i) => {
+        const stepId = `step-${run.id}-${i}`;
+        const hasTools = step.tools && step.tools.length > 0;
+        const toolsHtml = hasTools ? `
+          <div class="step-section">
+            <div class="step-section-label">Tool Calls</div>
+            ${step.tools.map(tool => `
+              <div class="tool-call-card">
+                <div class="tool-call-name">🔧 ${escapeHtml(tool.name)}</div>
+                <div class="tool-call-sublabel">Args:</div>
+                <pre class="tool-call-pre">${escapeHtml(tool.args)}</pre>
+                <div class="tool-call-sublabel">Result:</div>
+                <pre class="tool-call-pre">${escapeHtml(tool.result)}</pre>
+              </div>
+            `).join('')}
+          </div>
+        ` : '';
+
+        return `
+          <div class="step-item-trace" id="${stepId}-wrapper">
+            <div class="step-header" onclick="toggleStep('${stepId}')" style="cursor:pointer;">
+              <div class="step-header-num">${i + 1}</div>
+              <div class="step-header-name">${escapeHtml(step.name)}</div>
+              <span class="step-header-duration">${step.duration}</span>
+              <span class="step-chevron" id="${stepId}-chevron">▼</span>
+            </div>
+            <div class="step-body" id="${stepId}-body">
+              <div class="step-section">
+                <div class="step-section-label">Input</div>
+                <pre>${escapeHtml(step.input)}</pre>
+              </div>
+              <div class="step-section">
+                <div class="step-section-label">Output</div>
+                <pre>${escapeHtml(step.output)}</pre>
+              </div>
+              ${toolsHtml}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function toggleStep(stepId) {
+      const body = document.getElementById(stepId + '-body');
+      const chevron = document.getElementById(stepId + '-chevron');
+      if (!body) return;
+      body.classList.toggle('open');
+      if (chevron) {
+        chevron.style.transform = body.classList.contains('open') ? 'rotate(180deg)' : '';
+      }
+    }
+
+    function selectRun(id) {
+      activeRunId = id;
+
+      // Update active class in list
+      document.querySelectorAll('.trace-run-item').forEach(el => {
+        el.classList.remove('active');
+      });
+      const activeEl = document.getElementById('run-item-' + id);
+      if (activeEl) activeEl.classList.add('active');
+
+      const run = MOCK_TRACE_RUNS.find(r => r.id === id);
+      if (run) renderDetail(run);
+    }
+
+    function escapeHtml(str) {
+      if (typeof str !== 'string') str = String(str || '');
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    // Init
+    renderList();
+    selectRun('r1');
+  </script>
+</body>
+</html>

@@ -1,153 +1,186 @@
 # Telecom Scrum Agent — Концепция MVP
 
-**Домен:** @municorn.com
-**Сервисный аккаунт:** telecom.scrum.agent@municorn.com
+**Домен:** `@municorn.com`  
+**Сервисный аккаунт:** `telecom.scrum.agent@municorn.com`
 
 ---
 
 ## 1. Что делает продукт
 
-Сервис на Cloud Run:
+Локальный сервис в Docker Compose, который:
 
-- подключается к **Google Calendar + Meet** через сервисный аккаунт `telecom.scrum.agent@municorn.com`
-- подключается к **Jira** и **Notion** через MCP
-- имеет **веб-интерфейс** (вход через Google OAuth, только @municorn.com)
-- имеет **чатовый режим** с RAG по единой базе знаний
-- после встречи: транскрибация, summary, action items, decisions
-- предлагает обновления в Jira/Notion с подтверждением
+- подключается к **Google Calendar + Meet** через сервисный аккаунт,
+- подключается к **Jira** и **Notion** через MCP,
+- имеет **веб-интерфейс** с Google OAuth только для `@municorn.com`,
+- поддерживает **чат по единой базе знаний**,
+- после встречи строит summary, action items, decisions и blockers,
+- предлагает изменения в Jira/Notion с human-in-the-loop подтверждением,
+- сохраняет trace действий агентов и handoff между ними.
 
 ---
 
-## 2. Веб-приложение
+## 2. Архитектура продукта
 
-4 раздела:
+Приложение состоит из двух сервисов:
+
+- `backend` — один Python контейнер с FastAPI, DeepAgents runtime, background jobs, SQLite, RAG, MCP adapters и trace persistence.
+- `frontend` — Next.js интерфейс.
+
+Общий каталог `./data` монтируется только в `backend`.
+
+---
+
+## 3. Агентная модель MVP
+
+В MVP есть ровно 3 агента:
+
+### `meeting_participation`
+- синхронизирует встречи из Google Calendar/Meet,
+- нормализует артефакты встречи,
+- вызывает OpenAI для анализа встречи,
+- индексирует результаты в RAG.
+
+### `user_chat`
+- отвечает на пользовательские вопросы,
+- ищет контекст в RAG,
+- при необходимости запрашивает актуальный Jira/Notion контекст,
+- формирует финальный ответ с citations.
+
+### `jira_notion`
+- владеет всеми Jira/Notion MCP read/write операциями,
+- создаёт staged updates,
+- создаёт или дополняет meeting notes,
+- применяет только явно одобренные рискованные изменения.
+
+---
+
+## 4. Веб-приложение
+
+Основные разделы:
 
 ### Chat
-- вопрос-ответ по единой базе знаний (встречи + Jira + Notion)
-- ответы с ссылками на источники
+- вопрос-ответ по встречам, Jira и Notion,
+- ответы с citations и source provenance.
 
 ### Meetings
-- список встреч, статус обработки
-- транскрипт, summary, action items
-- связанные Jira issues и Notion pages
+- список встреч и статус обработки,
+- transcript, summary, action items, decisions,
+- связанные Jira issues и Notion pages.
 
-### Tasks / Sync
-- предложенные изменения в Jira/Notion
-- что применено, что ожидает подтверждения
+### Updates
+- staged изменения в Jira/Notion,
+- approve/reject/apply flow,
+- видимая причина, почему изменение было предложено.
+
+### Settings
+- интеграционные настройки,
+- секреты не возвращаются в открытом виде.
 
 ### Agent Trace
-- шаги агента, инструменты, источники данных, выводы
+- шаги runtime,
+- handoff между агентами,
+- используемые инструменты и результаты.
 
 ---
 
-## 3. Доступ и авторизация
+## 5. Доступ и авторизация
 
-- **Вход:** Google OAuth, только пользователи @municorn.com
-- **Calendar/Meet:** сервисный аккаунт `telecom.scrum.agent@municorn.com` с domain-wide delegation (calendar.readonly, meetings.space.readonly)
-- **База знаний:** единая, без скоупов — все видят всё, все могут спрашивать и редактировать
-- **Jira/Notion:** через MCP, общие API-токены
+- **Вход:** Google OAuth, только пользователи `@municorn.com`.
+- **Calendar/Meet:** сервисный аккаунт с domain-wide delegation.
+- **База знаний:** единая для команды в рамках MVP.
+- **Jira/Notion:** общие токены через MCP adapters backend-сервиса.
 
 ---
 
-## 4. Интеграции
+## 6. Интеграции
 
 ### Google Calendar + Meet
-1. Сервисный аккаунт синхронизирует календари пользователей @municorn.com
-2. Находит встречи с Meet-ссылкой
-3. После встречи забирает транскрипт/recording/notes через Google APIs
+1. Сервисный аккаунт синхронизирует календари пользователей домена.
+2. Находит события с Meet-ссылкой.
+3. После встречи получает transcript и notes metadata через Google APIs.
 
 ### Jira
-- Через Atlassian Remote MCP
-- Чтение issues, предложение обновлений через human-in-the-loop
+- доступ только через Atlassian MCP adapter,
+- чтение контекста и staged update proposals,
+- рискованные write-операции только после approve.
 
 ### Notion
-- Через Notion Remote MCP
-- Чтение страниц, создание meeting notes
+- доступ только через Notion MCP adapter,
+- чтение контекста,
+- создание или дополнение meeting notes,
+- более широкие write-операции только после approve.
 
 ---
 
-## 5. Получение данных встречи (MVP)
+## 7. Пайплайны
 
-**Основной путь:** нативные артефакты Google (транскрипты, записи, заметки).
-Требует Google Workspace Business Plus+ с включённой транскрибацией.
+### После встречи
 
-**Fallback (post-MVP):** headless browser participant.
+1. `meeting_participation` получает metadata и artifacts.
+2. Анализирует встречу через OpenAI.
+3. Индексирует transcript и analysis в RAG.
+4. При наличии внешних ссылок или кандидатов на sync вызывает `jira_notion`.
+5. `jira_notion` создаёт staged Jira/Notion updates.
+6. Пользователь подтверждает или отклоняет изменения в UI.
 
----
+### Чат
 
-## 6. RAG и база знаний
-
-Единая база знаний через **RAG-Anything** (LightRAG-based). Без разделения по пользователям — все данные доступны всей команде.
-
-Индексируемые источники:
-- транскрипты встреч
-- summaries, decisions, action items
-- Jira issues
-- Notion pages
-
-Knowledge graph строится автоматически (люди, встречи, задачи, решения, документы).
-
----
-
-## 7. Пайплайн после встречи
-
-1. **Ingest** — забрать metadata, transcript, notes
-2. **Анализ** — summary, action items, decisions, blockers, owners
-3. **Индексация** — всё в RAG-Anything
-4. **Предложения** — обновления в Jira/Notion
-5. **Подтверждение** — пользователь approve/reject через UI
-6. **Sync** — применить подтверждённые изменения через MCP
+1. `user_chat` делает retrieval из RAG.
+2. При необходимости передаёт запрос в `jira_notion` за live Jira/Notion context.
+3. `user_chat` собирает финальный ответ и citations.
 
 ---
 
 ## 8. Human-in-the-loop
 
-Автоматически (без подтверждения):
-- summary, link meeting ↔ issue, комментарии, пометка "mentioned in meeting"
+Автоматически:
+- локальные связи meeting ↔ issue/page,
+- локальный tag `mentioned-in-meeting`,
+- create/append meeting notes в разрешённом Notion parent,
+- сохранение proposed updates и trace.
 
 Только после подтверждения:
-- смена assignee, статуса, due date, estimate, description, создание subtasks
+- assignee/status/due date/estimate/priority/description в Jira,
+- крупные edit-операции в Notion,
+- иные неидемпотентные внешние изменения.
 
 ---
 
-## 9. Технический стек (MVP)
+## 9. Технический стек MVP
 
 | Компонент | Решение |
 |-----------|---------|
-| Backend | **FastAPI** (Python) |
-| Agent Runtime | **LangGraph** (Supervisor → sub-agents) |
-| LLM | **Anthropic Claude** |
-| RAG | **RAG-Anything** (LightRAG-based) |
-| MCP | **Atlassian Remote MCP** + **Notion Remote MCP** |
-| DB | **SQLite** (операционные данные) |
-| Storage | **Cloud Storage** (GCS FUSE mount) |
-| Auth | **Google OAuth** (только @municorn.com) |
-| Deploy | **Cloud Run** |
-| Scheduler | **Cloud Scheduler** (sync + backup) |
+| Backend | **FastAPI** |
+| Agent Runtime | **DeepAgents runtime** |
+| LLM | **OpenAI** |
+| RAG | **RAG-Anything** |
+| MCP | **Atlassian MCP** + **Notion MCP** |
+| DB | **SQLite** |
+| Storage | **локальный `./data` volume** |
+| Auth | **Google OAuth** |
+| Deploy | **Docker Compose (local MVP)** |
 
 ---
 
 ## 10. Roadmap
 
 ### MVP
-- Google login (@municorn.com only)
-- Calendar sync через сервисный аккаунт
-- Ingest meeting artifacts
-- RAG-чат по встречам + Jira + Notion
-- Suggested Jira/Notion updates + approval
+- Google login (`@municorn.com` only)
+- Calendar/Meet ingest
+- единая RAG база знаний
+- chat с citations
+- staged Jira/Notion updates + approval
+- trace runtime handoff и tool use
 
-### v2 — Meeting Intelligence
-- Diarization (кто говорил)
-- OCR/screenshots со screen share
-- Cross-meeting memory
-
-### v3 — Real-time Assistant
-- Live meeting assistant
-- Live action item detection
-- Подсказки фасилитатору
+### Post-MVP
+- diarization,
+- OCR/screenshots,
+- cross-meeting memory,
+- production hardening,
+- live assistant scenarios.
 
 ---
 
 ## 11. Итог
 
-> Платформа для анализа встреч, работы с базой знаний и контролируемого обновления Jira/Notion. Единая база знаний для всей команды @municorn.com.
+> Платформа для анализа встреч, общей базы знаний и контролируемого обновления Jira/Notion, где orchestration выполняется внутри одного backend+agents контейнера с тремя специализированными агентами.

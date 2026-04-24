@@ -8,14 +8,13 @@
 >
 > **Tracking rule:** use `bd` for execution tracking. Do not track progress by editing checkboxes in this file.
 
-**Goal:** Build the local MVP v2 of Telecom Scrum Agent with LangGraph orchestration, OpenAI as the only LLM provider, RAG-Anything knowledge storage, Google Calendar/Meet ingest, Jira/Notion MCP integration, and a Next.js UI for chat, meetings, updates, settings, and agent trace.
+**Goal:** Build the local MVP v2 of Telecom Scrum Agent with a DeepAgents runtime, OpenAI as the only LLM provider, Google Calendar/Meet ingest, a shared RAG knowledge base, Jira/Notion MCP integration, and a Next.js UI for chat, meetings, updates, settings, and trace review.
 
-**Architecture:** Two Docker Compose services plus a shared `./data` volume. The backend is a FastAPI REST/SSE API that owns auth, SQLite, background jobs, LangGraph graphs, RAG, MCP clients, and agent trace persistence. The frontend is a Next.js App Router application that calls the backend only through typed API helpers.
+**Architecture:** Two Docker Compose services plus a shared `./data` volume. The `backend` service is a single Python container that runs FastAPI, background jobs, DeepAgents orchestration, all three agents, SQLite, RAG, MCP adapters, and trace persistence. The `frontend` service is a Next.js App Router app that talks only to the backend through typed HTTP and SSE helpers.
 
 **Tech Stack:**
-- Backend: FastAPI, Uvicorn, SQLAlchemy, SQLite, LangGraph, LangChain Core, `langchain-openai`, `langchain-mcp-adapters`, MCP Python client, RAG-Anything, Google auth/API clients, python-jose, pytest.
-- LLM provider: OpenAI only, configured through `OPENAI_API_KEY` and `OPENAI_MODEL`.
-- Frontend: Next.js 14, TypeScript, Tailwind CSS, shadcn/ui, Vitest or Jest for unit tests, Playwright for browser smoke tests.
+- Backend: FastAPI, Uvicorn, SQLAlchemy, SQLite, OpenAI via `langchain-openai`, DeepAgents runtime, MCP Python client, `langchain-mcp-adapters`, RAG-Anything, Google auth and API clients, python-jose, pytest.
+- Frontend: Next.js 14, TypeScript, Tailwind CSS, shadcn/ui, Vitest or Jest, Playwright.
 - Runtime: Docker Compose, local `./data/db`, `./data/rag`, `./data/keys`.
 
 ---
@@ -80,20 +79,15 @@ telecom-scrum-agent/
 │   │   ├── calendar_sync.py
 │   │   ├── mcp_clients.py
 │   │   ├── trace_store.py
-│   │   ├── graphs/
+│   │   ├── runtime/
 │   │   │   ├── __init__.py
-│   │   │   ├── state.py
-│   │   │   ├── supervisor.py
-│   │   │   ├── meeting_graph.py
-│   │   │   └── chat_graph.py
-│   │   ├── modules/
-│   │   │   └── scrum/
-│   │   │       ├── __init__.py
-│   │   │       ├── meeting_agent.py
-│   │   │       ├── rag_agent.py
-│   │   │       ├── jira_agent.py
-│   │   │       ├── notion_agent.py
-│   │   │       └── chat_agent.py
+│   │   │   ├── contracts.py
+│   │   │   └── orchestrator.py
+│   │   ├── agents/
+│   │   │   ├── __init__.py
+│   │   │   ├── meeting_participation.py
+│   │   │   ├── user_chat.py
+│   │   │   └── jira_notion.py
 │   │   └── routers/
 │   │       ├── __init__.py
 │   │       ├── auth.py
@@ -110,9 +104,10 @@ telecom-scrum-agent/
 │       ├── test_llm.py
 │       ├── test_rag.py
 │       ├── test_calendar_sync.py
-│       ├── test_graph_state.py
-│       ├── test_meeting_graph.py
-│       ├── test_chat_graph.py
+│       ├── test_runtime.py
+│       ├── test_meeting_participation.py
+│       ├── test_user_chat.py
+│       ├── test_jira_notion.py
 │       ├── test_mcp_clients.py
 │       └── test_api_smoke.py
 ├── frontend/
@@ -152,6 +147,11 @@ telecom-scrum-agent/
     └── keys/
 ```
 
+Rules:
+- Only the `backend` service mounts `./data`.
+- The frontend never talks to agents directly.
+- There is no separate agents container and no agent-specific public port.
+
 ---
 
 ## 3. Environment Contract
@@ -190,97 +190,164 @@ NOTION_TOKEN=
 
 Rules:
 - `ANTHROPIC_API_KEY` is not used in MVP v2.
-- The backend must fail fast if `OPENAI_API_KEY` is missing when an LLM endpoint or graph node is invoked.
-- `OPENAI_MODEL` must be configurable; tests must not depend on a live OpenAI request.
+- The backend must fail fast if `OPENAI_API_KEY` is missing when an LLM-backed capability is invoked.
+- `OPENAI_MODEL` must be configurable and tests must not depend on live OpenAI requests.
 
 ---
 
-## 4. LangGraph Design
+## 4. DeepAgents Runtime Design
 
-### 4.1 Agent State
+### 4.1 Runtime Contracts And Shared Services
 
-`backend/app/graphs/state.py` owns the shared state:
+`backend/app/runtime/contracts.py` owns the backend run contract:
 
-```python
-from typing import Annotated, Literal, Optional, TypedDict
+- `RunMode = Literal["meeting_processing", "chat"]`
+- `AgentName = Literal["meeting_participation", "user_chat", "jira_notion"]`
+- `HandoffTarget = Literal["meeting_participation", "user_chat", "jira_notion", "END"]`
+- `RunContext` contains:
+  - `run_id`
+  - `mode`
+  - `user_id`
+  - `meeting_id`
+  - `messages`
+  - `meeting_record`
+  - `meeting_analysis`
+  - `retrieval_results`
+  - `proposed_updates`
+  - `requires_jira_notion_context`
+  - `final_answer`
+  - `trace_events`
 
-from langchain_core.messages import BaseMessage
-from langgraph.graph.message import add_messages
+`backend/app/runtime/orchestrator.py` owns:
+- run creation and finalization,
+- handoff policy between agents,
+- trace event emission,
+- shared service injection,
+- controlled failure behavior for partial external outages.
 
+Shared services are provided once per backend process:
+- SQLite session factory,
+- OpenAI chat model factory,
+- Google Calendar and Meet adapter,
+- RAG service,
+- MCP tool registry,
+- trace store.
 
-GraphMode = Literal["meeting_pipeline", "chat"]
-NextAgent = Literal["meeting_agent", "rag_agent", "jira_agent", "notion_agent", "chat_agent", "END"]
+### 4.2 Agent Responsibilities And Tool Boundaries
 
+#### `meeting_participation`
 
-class AgentState(TypedDict, total=False):
-    messages: Annotated[list[BaseMessage], add_messages]
-    mode: GraphMode
-    user_id: str
-    meeting_id: Optional[str]
-    query: Optional[str]
-    next_agent: NextAgent
-    context: dict
-    retrieval_results: list[dict]
-    proposed_updates: list[dict]
-    final_answer: Optional[str]
-    trace_id: Optional[str]
-```
+Responsibility:
+- sync Calendar events with Meet links,
+- fetch transcript, notes, and meeting metadata,
+- normalize artifacts into app-owned meeting records,
+- call OpenAI to produce summary, action items, decisions, and blockers,
+- index meeting artifacts and analysis into RAG.
 
-### 4.2 Meeting Pipeline Route
+Allowed tools:
+- Google Calendar and Meet adapter,
+- OpenAI analysis helpers,
+- RAG write interface,
+- trace store.
 
-The MVP v2 meeting graph is deterministic in order, but still uses LangGraph for traceable orchestration:
+Forbidden:
+- direct Jira or Notion MCP access,
+- final user-chat response generation.
+
+#### `user_chat`
+
+Responsibility:
+- handle interactive chat requests,
+- retrieve context from RAG,
+- decide whether fresh Jira or Notion context is required,
+- synthesize final cited answers,
+- stream structured SSE events back to the UI.
+
+Allowed tools:
+- OpenAI chat helpers,
+- RAG read interface,
+- trace store,
+- runtime handoff to `jira_notion`.
+
+Forbidden:
+- direct Google Calendar or Meet access,
+- direct Jira or Notion writes.
+
+#### `jira_notion`
+
+Responsibility:
+- own all Jira and Notion MCP reads,
+- generate staged Jira and Notion updates from meeting outputs,
+- create or append meeting notes in Notion,
+- apply approved changes,
+- normalize MCP tool outputs into app-owned result objects.
+
+Allowed tools:
+- Atlassian MCP adapter,
+- Notion MCP adapter,
+- approval-policy checker,
+- trace store.
+
+Forbidden:
+- Google Calendar or Meet access,
+- final chat answer composition.
+
+### 4.3 Meeting Processing Workflow
+
+Meeting processing is deterministic in MVP v2:
 
 ```text
 START
-  -> meeting_agent
-  -> rag_agent
-  -> jira_agent
-  -> notion_agent
+  -> meeting_participation
+  -> optional jira_notion
   -> END
 ```
 
-`meeting_agent` fetches artifacts and analyzes the meeting with OpenAI. `rag_agent` indexes transcript, summary, decisions, and action items. `jira_agent` proposes Jira updates. `notion_agent` proposes or creates Notion meeting notes according to the human-in-the-loop rules.
+Rules:
+- `meeting_participation` always runs first.
+- `jira_notion` runs only when meeting analysis references Jira or Notion objects, or when staged updates or meeting-note actions are required.
+- Every handoff and decision is persisted into the trace store.
 
-### 4.3 Chat Route
+### 4.4 Chat Workflow
 
-The chat graph uses supervisor routing because the query may need only RAG, or RAG plus Jira/Notion context:
+Chat is user-led and may require live Jira or Notion context:
 
 ```text
 START
-  -> supervisor
-  -> rag_agent
-  -> optional jira_agent
-  -> optional notion_agent
-  -> chat_agent
+  -> user_chat
+  -> optional jira_notion
+  -> user_chat
   -> END
 ```
 
-The supervisor must return strict JSON:
+Rules:
+- `user_chat` always owns the final response.
+- `jira_notion` is a contextual integration agent, not a user-facing answer agent.
+- Chat must return citations with source type and source identifier.
 
-```json
-{"next_agent":"rag_agent","reasoning":"Need retrieval before answering."}
-```
-
-### 4.4 Human-In-The-Loop Rules
+### 4.5 Human-In-The-Loop Rules
 
 Automatic without approval:
-- Add meeting summary as a comment when the issue/page was explicitly mentioned.
-- Link meeting record to the target object in local SQLite.
-- Add local metadata tag `mentioned-in-meeting`.
-- Create Notion meeting note when the configured Notion parent exists.
+- create or append meeting notes in the configured Notion parent,
+- add local links between meetings and referenced Jira or Notion objects,
+- add local `mentioned-in-meeting` metadata,
+- persist staged recommendations for later review.
 
 Require explicit approval:
-- Jira assignee, status, due date, estimate, priority, description.
-- Notion page edits beyond appending meeting notes.
-- Creating Jira subtasks.
+- Jira assignee, status, due date, estimate, priority, description,
+- Notion edits beyond appending meeting notes,
+- Jira issue creation when the user did not explicitly request it,
+- any MCP action that mutates external systems in a non-idempotent way.
+
+Approval is enforced only inside `jira_notion`. Neither `meeting_participation` nor `user_chat` may perform risky external writes.
 
 ---
 
 ## 5. Iterative Implementation Plan
 
-Each task is intentionally small enough to complete, test, commit, and push independently.
+Each task must start with failing tests and end with targeted verification.
 
-### Task 1: Project Scaffold
+### Task 1: Project Scaffold And Config
 
 **Files:**
 - Create `docker-compose.yml`
@@ -296,50 +363,17 @@ Each task is intentionally small enough to complete, test, commit, and push inde
 - Create `frontend/src/app/layout.tsx`
 - Create `frontend/src/app/page.tsx`
 
-**TDD sequence:**
-1. Write `backend/tests/test_config.py` to prove config loads `OPENAI_API_KEY`, `OPENAI_MODEL`, `DATABASE_URL`, and `RAG_STORAGE_PATH` from environment.
-2. Run:
+**Verification:**
+- `cd backend && pytest tests/test_config.py -v`
+- `docker compose config`
 
-```bash
-cd backend
-pytest tests/test_config.py -v
-```
+**Acceptance:**
+- Backend exposes port `8000`.
+- Frontend exposes port `3000`.
+- `./data` is mounted into backend only.
+- No Anthropic dependency or environment variable is required.
 
-Expected first result: fail because `app.config` does not exist.
-
-3. Implement `backend/app/config.py` with a `Settings` dataclass and `get_settings()`.
-4. Add `GET /health` in `backend/app/main.py`.
-5. Run:
-
-```bash
-cd backend
-pytest tests/test_config.py -v
-```
-
-Expected result after implementation: pass.
-
-6. Run:
-
-```bash
-docker compose config
-```
-
-Expected result: Compose renders both services without schema errors.
-
-7. Commit:
-
-```bash
-git add docker-compose.yml .env.example backend frontend
-git commit -m "feat: scaffold MVP v2 app"
-```
-
-Acceptance:
-- Backend container exposes port `8000`.
-- Frontend container exposes port `3000`.
-- `./data` is mounted to `/data`.
-- No Anthropic environment variable is required.
-
-### Task 2: SQLite Database And Models
+### Task 2: SQLite Models And Trace Tables
 
 **Files:**
 - Create `backend/app/database.py`
@@ -348,39 +382,13 @@ Acceptance:
 - Create `backend/tests/test_models.py`
 - Modify `backend/app/main.py`
 
-**TDD sequence:**
-1. Write tests for these tables: `User`, `Meeting`, `MeetingArtifact`, `ProposedUpdate`, `AgentRun`, `AgentStep`, `Setting`.
-2. Run:
+**Verification:**
+- `cd backend && pytest tests/test_models.py -v`
 
-```bash
-cd backend
-pytest tests/test_models.py -v
-```
-
-Expected first result: fail because models do not exist.
-
-3. Implement SQLAlchemy engine/session setup and models.
-4. Add startup table creation in `main.py`.
-5. Run:
-
-```bash
-cd backend
-pytest tests/test_models.py -v
-```
-
-Expected result: pass.
-
-6. Commit:
-
-```bash
-git add backend/app/database.py backend/app/models.py backend/app/main.py backend/tests
-git commit -m "feat: add SQLite models"
-```
-
-Acceptance:
-- Test DB uses in-memory SQLite.
+**Acceptance:**
 - Runtime DB uses `DATABASE_URL`.
-- Agent trace tables are present from the start.
+- Tests use in-memory SQLite.
+- Trace tables exist before any agent execution.
 
 ### Task 3: Auth And Domain Restriction
 
@@ -391,40 +399,13 @@ Acceptance:
 - Create `backend/tests/test_auth.py`
 - Modify `backend/app/main.py`
 
-**TDD sequence:**
-1. Write tests for `is_allowed_email`, `create_token`, `decode_token`, invalid token rejection, and blocked non-`@municorn.com` users.
-2. Run:
+**Verification:**
+- `cd backend && pytest tests/test_auth.py -v`
 
-```bash
-cd backend
-pytest tests/test_auth.py -v
-```
-
-Expected first result: fail because auth helpers do not exist.
-
-3. Implement Google OAuth URL generation, JWT creation/decoding, and `get_current_user`.
-4. Register `/auth/login`, `/auth/callback`, and `/auth/me`.
-5. Run:
-
-```bash
-cd backend
-pytest tests/test_auth.py -v
-pytest tests/test_api_smoke.py -v
-```
-
-Expected result: pass.
-
-6. Commit:
-
-```bash
-git add backend/app/auth.py backend/app/deps.py backend/app/routers/auth.py backend/app/main.py backend/tests
-git commit -m "feat: add Google OAuth and JWT auth"
-```
-
-Acceptance:
-- Only the configured `ALLOWED_DOMAIN` is accepted.
-- JWT contains `sub`, `email`, `name`, `picture`, and `exp`.
+**Acceptance:**
+- Only `ALLOWED_DOMAIN` users can log in.
 - OAuth callback redirects to `FRONTEND_URL/auth/callback?token=<jwt>`.
+- JWT includes `sub`, `email`, `name`, `picture`, and `exp`.
 
 ### Task 4: OpenAI LLM Gateway
 
@@ -433,104 +414,31 @@ Acceptance:
 - Create `backend/tests/test_llm.py`
 - Modify `backend/requirements.txt`
 
-**TDD sequence:**
-1. Write tests using a fake chat model for:
-   - missing `OPENAI_API_KEY` raises a clear configuration error,
-   - `get_chat_model()` uses `OPENAI_MODEL`,
-   - `analyze_meeting_text()` parses strict JSON into a Python dict,
-   - invalid model JSON returns a typed error result without crashing the graph.
-2. Run:
+**Verification:**
+- `cd backend && pytest tests/test_llm.py -v`
 
-```bash
-cd backend
-pytest tests/test_llm.py -v
-```
-
-Expected first result: fail because `app.llm` does not exist.
-
-3. Add dependencies:
-
-```text
-langgraph
-langchain-core
-langchain-openai
-openai
-```
-
-4. Implement `get_chat_model(settings)` using `ChatOpenAI`.
-5. Implement `analyze_meeting_text(llm, transcript, title, participants)` with a strict JSON prompt.
-6. Run:
-
-```bash
-cd backend
-pytest tests/test_llm.py -v
-```
-
-Expected result: pass without network calls.
-
-7. Commit:
-
-```bash
-git add backend/app/llm.py backend/requirements.txt backend/tests/test_llm.py
-git commit -m "feat: add OpenAI LLM gateway"
-```
-
-Acceptance:
-- `langchain-anthropic` is not required.
+**Acceptance:**
+- `get_chat_model(settings)` uses `OPENAI_MODEL`.
+- Missing `OPENAI_API_KEY` raises a clear runtime error.
 - Tests fake the LLM and never call OpenAI.
-- Production code uses `OPENAI_API_KEY` only at runtime.
 
-### Task 5: LangGraph State, Trace Store, And Deterministic Meeting Graph
+### Task 5: DeepAgents Runtime Contracts, Orchestrator, And Trace Store
 
 **Files:**
-- Create `backend/app/graphs/state.py`
-- Create `backend/app/graphs/meeting_graph.py`
+- Create `backend/app/runtime/__init__.py`
+- Create `backend/app/runtime/contracts.py`
+- Create `backend/app/runtime/orchestrator.py`
 - Create `backend/app/trace_store.py`
-- Create `backend/tests/test_graph_state.py`
-- Create `backend/tests/test_meeting_graph.py`
+- Create `backend/tests/test_runtime.py`
 - Modify `backend/app/models.py`
 
-**TDD sequence:**
-1. Write tests proving `AgentState` accepts appended LangChain messages.
-2. Write a graph test with fake node functions that records this exact order:
+**Verification:**
+- `cd backend && pytest tests/test_runtime.py -v`
 
-```text
-meeting_agent -> rag_agent -> jira_agent -> notion_agent
-```
-
-3. Write trace tests proving every node writes `AgentStep` rows with `step_name`, `input_json`, `output_json`, and `tool_calls`.
-4. Run:
-
-```bash
-cd backend
-pytest tests/test_graph_state.py tests/test_meeting_graph.py -v
-```
-
-Expected first result: fail because graph files do not exist.
-
-5. Implement `AgentState`.
-6. Implement `build_meeting_graph(services)` with `StateGraph(AgentState)`.
-7. Implement `TraceStore.start_run()`, `TraceStore.record_step()`, and `TraceStore.finish_run()`.
-8. Run:
-
-```bash
-cd backend
-pytest tests/test_graph_state.py tests/test_meeting_graph.py -v
-```
-
-Expected result: pass.
-
-9. Commit:
-
-```bash
-git add backend/app/graphs backend/app/trace_store.py backend/app/models.py backend/tests
-git commit -m "feat: add LangGraph meeting orchestration"
-```
-
-Acceptance:
-- LangGraph is the orchestration layer from this task onward.
-- Meeting pipeline order is deterministic for MVP.
-- Agent trace persistence is part of graph execution.
+**Acceptance:**
+- The runtime supports only the three named agents.
+- Meeting runs and chat runs share one contract shape.
+- Every agent handoff and result is recorded to the trace store.
 
 ### Task 6: Google Calendar And Meet Adapter
 
@@ -539,340 +447,109 @@ Acceptance:
 - Create `backend/tests/test_calendar_sync.py`
 - Modify `backend/app/models.py`
 
-**TDD sequence:**
-1. Write tests with fake Google service objects for:
-   - events without Meet links are ignored,
-   - Meet links create `Meeting` rows,
-   - duplicate calendar event IDs are skipped,
-   - transcript entries are converted into speaker-prefixed lines,
-   - missing transcript marks the meeting as `no_transcript`.
-2. Run:
+**Verification:**
+- `cd backend && pytest tests/test_calendar_sync.py -v`
 
-```bash
-cd backend
-pytest tests/test_calendar_sync.py -v
-```
+**Acceptance:**
+- Events without Meet links are ignored.
+- Duplicate calendar events are skipped safely.
+- Missing transcript becomes `no_transcript`, not a crash.
 
-Expected first result: fail because `calendar_sync.py` does not exist.
-
-3. Implement service-account credential loading from `SA_KEY_PATH`.
-4. Implement `sync_calendar_events(db, subject_email)`.
-5. Implement `fetch_meet_artifacts(db, meeting)`.
-6. Run:
-
-```bash
-cd backend
-pytest tests/test_calendar_sync.py -v
-```
-
-Expected result: pass without Google network calls.
-
-7. Commit:
-
-```bash
-git add backend/app/calendar_sync.py backend/app/models.py backend/tests/test_calendar_sync.py
-git commit -m "feat: add Google Calendar and Meet ingest"
-```
-
-Acceptance:
-- Domain-wide delegation subject is configurable.
-- No test depends on live Google APIs.
-- Meetings store raw transcript and artifact status.
-
-### Task 7: RAG-Anything Service
+### Task 7: RAG Service
 
 **Files:**
 - Create `backend/app/rag.py`
 - Create `backend/tests/test_rag.py`
 - Modify `backend/requirements.txt`
 
-**TDD sequence:**
-1. Write tests with a fake RAG backend for:
-   - meeting transcript indexing stores source metadata,
-   - summary/action/decision indexing creates separate source records,
-   - query returns normalized citations,
-   - RAG storage path is created when missing.
-2. Run:
+**Verification:**
+- `cd backend && pytest tests/test_rag.py -v`
 
-```bash
-cd backend
-pytest tests/test_rag.py -v
-```
+**Acceptance:**
+- The app exposes a small RAG interface instead of raw library calls everywhere.
+- Indexed entries include `source_type`, `source_id`, `meeting_id`, and `title`.
+- Search returns normalized citations for chat responses.
 
-Expected first result: fail because `app.rag` does not exist.
-
-3. Add dependency:
-
-```text
-rag-anything
-```
-
-4. Implement `RAGService.index_meeting(meeting, analysis)`.
-5. Implement `RAGService.search(query, top_k=8)`.
-6. Run:
-
-```bash
-cd backend
-pytest tests/test_rag.py -v
-```
-
-Expected result: pass.
-
-7. Commit:
-
-```bash
-git add backend/app/rag.py backend/requirements.txt backend/tests/test_rag.py
-git commit -m "feat: add RAG-Anything service"
-```
-
-Acceptance:
-- The service exposes a small app-owned interface, not raw RAG-Anything calls across the codebase.
-- Every indexed item has `source_type`, `source_id`, `meeting_id`, and `title` metadata.
-
-### Task 8: Scrum Module Agents
-
-**Files:**
-- Create `backend/app/modules/scrum/meeting_agent.py`
-- Create `backend/app/modules/scrum/rag_agent.py`
-- Create `backend/app/modules/scrum/jira_agent.py`
-- Create `backend/app/modules/scrum/notion_agent.py`
-- Create `backend/app/modules/scrum/chat_agent.py`
-- Create `backend/app/modules/scrum/__init__.py`
-- Modify `backend/app/graphs/meeting_graph.py`
-- Create or extend `backend/tests/test_meeting_graph.py`
-
-**TDD sequence:**
-1. Write node-level tests with fake services:
-   - `meeting_agent` loads transcript and writes analysis into `state["context"]["analysis"]`,
-   - `rag_agent` indexes analysis and records indexed source IDs,
-   - `jira_agent` appends proposed Jira updates only when issues are explicit,
-   - `notion_agent` appends proposed Notion updates or note creation requests,
-   - each node preserves existing state keys.
-2. Run:
-
-```bash
-cd backend
-pytest tests/test_meeting_graph.py -v
-```
-
-Expected first result: fail because scrum module node functions do not exist.
-
-3. Implement one node at a time, rerunning its failing test after each implementation.
-4. Run the full graph tests:
-
-```bash
-cd backend
-pytest tests/test_meeting_graph.py -v
-```
-
-Expected result: pass.
-
-5. Commit:
-
-```bash
-git add backend/app/modules/scrum backend/app/graphs/meeting_graph.py backend/tests/test_meeting_graph.py
-git commit -m "feat: add scrum LangGraph agents"
-```
-
-Acceptance:
-- Agent functions are plain Python callables compatible with LangGraph nodes.
-- Business rules live in agents, not routers.
-- Each agent is testable without FastAPI.
-
-### Task 9: MCP Clients For Jira And Notion
+### Task 8: MCP Adapter Layer
 
 **Files:**
 - Create `backend/app/mcp_clients.py`
 - Create `backend/tests/test_mcp_clients.py`
 - Modify `backend/requirements.txt`
 
-**TDD sequence:**
-1. Write tests with fake MCP sessions for:
-   - Atlassian tools are loaded once and cached,
-   - Notion tools are loaded once and cached,
-   - missing token disables write tools with a clear error,
-   - tool invocation results are normalized into `ToolResult`.
-2. Run:
+**Verification:**
+- `cd backend && pytest tests/test_mcp_clients.py -v`
 
-```bash
-cd backend
-pytest tests/test_mcp_clients.py -v
-```
+**Acceptance:**
+- Jira and Notion MCP access is hidden behind one adapter layer.
+- Tests do not require live Atlassian or Notion credentials.
+- Tool results are normalized before agents consume them.
 
-Expected first result: fail because `mcp_clients.py` does not exist.
-
-3. Add dependencies:
-
-```text
-mcp
-langchain-mcp-adapters
-```
-
-4. Implement `MCPToolRegistry`.
-5. Implement `get_jira_tools()` and `get_notion_tools()`.
-6. Run:
-
-```bash
-cd backend
-pytest tests/test_mcp_clients.py -v
-```
-
-Expected result: pass without connecting to remote MCP servers.
-
-7. Commit:
-
-```bash
-git add backend/app/mcp_clients.py backend/requirements.txt backend/tests/test_mcp_clients.py
-git commit -m "feat: add Jira and Notion MCP clients"
-```
-
-Acceptance:
-- MCP is behind an adapter interface.
-- Tests do not require Atlassian or Notion credentials.
-- Agents can request tools through shared services.
-
-### Task 10: Proposed Updates And Approval API
+### Task 9: `meeting_participation` Agent
 
 **Files:**
+- Create `backend/app/agents/meeting_participation.py`
+- Create `backend/tests/test_meeting_participation.py`
+- Modify `backend/app/runtime/orchestrator.py`
+
+**Verification:**
+- `cd backend && pytest tests/test_meeting_participation.py -v`
+
+**Acceptance:**
+- The agent loads meeting artifacts, produces analysis, and writes indexed RAG records.
+- The agent never touches Jira or Notion tools.
+- Meeting processing can end without `jira_notion` when no external references are found.
+
+### Task 10: `jira_notion` Agent And Updates API
+
+**Files:**
+- Create `backend/app/agents/jira_notion.py`
 - Create `backend/app/routers/updates.py`
+- Create `backend/tests/test_jira_notion.py`
 - Create or extend `backend/tests/test_api_smoke.py`
 - Modify `backend/app/main.py`
 - Modify `backend/app/models.py`
 
-**TDD sequence:**
-1. Write API tests for:
-   - list pending updates,
-   - approve update,
-   - reject update,
-   - apply approved update through fake Jira/Notion clients,
-   - prevent applying rejected or already applied updates.
-2. Run:
+**Verification:**
+- `cd backend && pytest tests/test_jira_notion.py tests/test_api_smoke.py -v`
 
-```bash
-cd backend
-pytest tests/test_api_smoke.py -v
-```
+**Acceptance:**
+- Jira and Notion reads happen only through this agent.
+- Risky writes require prior approval.
+- Update apply attempts are idempotent and recorded.
 
-Expected first result: fail because update routes do not exist.
-
-3. Implement `/updates`, `/updates/{id}/approve`, `/updates/{id}/reject`, `/updates/{id}/apply`.
-4. Run:
-
-```bash
-cd backend
-pytest tests/test_api_smoke.py -v
-```
-
-Expected result: pass.
-
-5. Commit:
-
-```bash
-git add backend/app/routers/updates.py backend/app/main.py backend/app/models.py backend/tests/test_api_smoke.py
-git commit -m "feat: add proposed update approval API"
-```
-
-Acceptance:
-- Applying changes is idempotent.
-- Dangerous changes require prior approval.
-- Every apply attempt records a sync operation or trace step.
-
-### Task 11: Chat Graph And SSE API
+### Task 11: `user_chat` Agent And Chat SSE API
 
 **Files:**
-- Create `backend/app/graphs/supervisor.py`
-- Create `backend/app/graphs/chat_graph.py`
+- Create `backend/app/agents/user_chat.py`
 - Create `backend/app/routers/chat.py`
-- Create `backend/tests/test_chat_graph.py`
+- Create `backend/tests/test_user_chat.py`
+- Create or extend `backend/tests/test_api_smoke.py`
 - Modify `backend/app/main.py`
+- Modify `backend/app/runtime/orchestrator.py`
 
-**TDD sequence:**
-1. Write tests for supervisor JSON parsing:
-   - valid `next_agent` is accepted,
-   - unknown `next_agent` becomes a controlled error,
-   - malformed JSON falls back to `rag_agent`.
-2. Write graph tests:
-   - query always visits `rag_agent`,
-   - query can optionally visit Jira/Notion context nodes,
-   - `chat_agent` produces `final_answer` with citations.
-3. Write API test proving `/chat` returns SSE frames.
-4. Run:
+**Verification:**
+- `cd backend && pytest tests/test_user_chat.py tests/test_api_smoke.py -v`
 
-```bash
-cd backend
-pytest tests/test_chat_graph.py tests/test_api_smoke.py -v
-```
-
-Expected first result: fail because chat graph/routes do not exist.
-
-5. Implement supervisor prompt using OpenAI through `llm.py`.
-6. Implement `build_chat_graph(services)`.
-7. Implement `/chat` SSE route.
-8. Run:
-
-```bash
-cd backend
-pytest tests/test_chat_graph.py tests/test_api_smoke.py -v
-```
-
-Expected result: pass.
-
-9. Commit:
-
-```bash
-git add backend/app/graphs/supervisor.py backend/app/graphs/chat_graph.py backend/app/routers/chat.py backend/app/main.py backend/tests
-git commit -m "feat: add LangGraph chat orchestration"
-```
-
-Acceptance:
-- LangGraph controls chat orchestration.
-- SSE route streams answer chunks or structured events.
-- Citations include source type and source ID.
+**Acceptance:**
+- Chat always starts and ends in `user_chat`.
+- `jira_notion` is used only when live Jira or Notion context is required.
+- SSE events stream answer content and citations.
 
 ### Task 12: Meetings API And Background Jobs
 
 **Files:**
 - Create `backend/app/routers/meetings.py`
-- Create `backend/tests/test_api_smoke.py`
+- Create or extend `backend/tests/test_api_smoke.py`
 - Modify `backend/app/main.py`
 
-**TDD sequence:**
-1. Write tests for:
-   - list meetings,
-   - get meeting detail,
-   - start calendar sync,
-   - start meeting processing,
-   - processing updates meeting status through fake graph execution.
-2. Run:
+**Verification:**
+- `cd backend && pytest tests/test_api_smoke.py -v`
 
-```bash
-cd backend
-pytest tests/test_api_smoke.py -v
-```
-
-Expected first result: fail because meeting routes do not exist.
-
-3. Implement `/meetings`, `/meetings/{id}`, `/meetings/sync`, `/meetings/{id}/process`.
-4. Run:
-
-```bash
-cd backend
-pytest tests/test_api_smoke.py -v
-```
-
-Expected result: pass.
-
-5. Commit:
-
-```bash
-git add backend/app/routers/meetings.py backend/app/main.py backend/tests/test_api_smoke.py
-git commit -m "feat: add meetings API"
-```
-
-Acceptance:
+**Acceptance:**
+- `/meetings`, `/meetings/{id}`, `/meetings/sync`, and `/meetings/{id}/process` are available.
 - Background jobs are explicit and observable.
-- Meeting processing invokes the LangGraph meeting graph.
-- Meeting status transitions are persisted.
+- Meeting processing uses the runtime orchestrator.
 
 ### Task 13: Settings And Trace APIs
 
@@ -882,44 +559,15 @@ Acceptance:
 - Create or extend `backend/tests/test_api_smoke.py`
 - Modify `backend/app/main.py`
 
-**TDD sequence:**
-1. Write tests for:
-   - read settings,
-   - update non-secret settings,
-   - reject attempts to return secret values,
-   - list agent runs,
-   - get agent steps for a run.
-2. Run:
+**Verification:**
+- `cd backend && pytest tests/test_api_smoke.py -v`
 
-```bash
-cd backend
-pytest tests/test_api_smoke.py -v
-```
-
-Expected first result: fail because routes do not exist.
-
-3. Implement settings and trace routers.
-4. Run:
-
-```bash
-cd backend
-pytest tests/test_api_smoke.py -v
-```
-
-Expected result: pass.
-
-5. Commit:
-
-```bash
-git add backend/app/routers/settings.py backend/app/routers/trace.py backend/app/main.py backend/tests/test_api_smoke.py
-git commit -m "feat: add settings and trace APIs"
-```
-
-Acceptance:
+**Acceptance:**
 - Secrets are write-only or environment-only.
-- Agent trace can be inspected from the UI.
+- The trace API exposes runs, handoffs, and step payloads.
+- The frontend can audit why an external action was proposed.
 
-### Task 14: Frontend API Client And Auth Guard
+### Task 14: Frontend API Client And Auth Helpers
 
 **Files:**
 - Create `frontend/src/lib/types.ts`
@@ -929,308 +577,57 @@ Acceptance:
 - Create `frontend/tests/api.test.ts`
 - Create `frontend/tests/auth.test.ts`
 
-**TDD sequence:**
-1. Write frontend tests for:
-   - API client attaches bearer token,
-   - API client throws typed errors,
-   - auth callback stores JWT,
-   - auth guard redirects when no token exists.
-2. Run:
+**Verification:**
+- `cd frontend && npm test -- api.test.ts auth.test.ts`
 
-```bash
-cd frontend
-npm test -- api.test.ts auth.test.ts
-```
-
-Expected first result: fail because helper files do not exist.
-
-3. Implement `api.ts`, `auth.ts`, and `AuthGuard`.
-4. Run:
-
-```bash
-cd frontend
-npm test -- api.test.ts auth.test.ts
-```
-
-Expected result: pass.
-
-5. Commit:
-
-```bash
-git add frontend/src/lib frontend/src/components/AuthGuard.tsx frontend/tests
-git commit -m "feat: add frontend API and auth helpers"
-```
-
-Acceptance:
+**Acceptance:**
 - Frontend has one API client path.
 - Token storage is centralized.
 - Components do not call `fetch` directly.
 
-### Task 15: Frontend App Shell
+### Task 15: Frontend Shell And Primary Screens
 
 **Files:**
 - Create `frontend/src/components/AppShell.tsx`
 - Create `frontend/src/components/Nav.tsx`
 - Create `frontend/src/components/StatusBadge.tsx`
-- Modify `frontend/src/app/layout.tsx`
-- Modify `frontend/src/app/page.tsx`
-
-**TDD sequence:**
-1. Write component tests for navigation labels and active route state.
-2. Run:
-
-```bash
-cd frontend
-npm test -- AppShell
-```
-
-Expected first result: fail because shell components do not exist.
-
-3. Implement shell components following `pages/design-brief.md`.
-4. Run:
-
-```bash
-cd frontend
-npm test -- AppShell
-```
-
-Expected result: pass.
-
-5. Commit:
-
-```bash
-git add frontend/src/components frontend/src/app
-git commit -m "feat: add frontend app shell"
-```
-
-Acceptance:
-- Project-level screens use a consistent sidebar.
-- The UI is desktop-first and information-dense.
-
-### Task 16: Chat UI
-
-**Files:**
 - Create `frontend/src/app/chat/page.tsx`
-- Create or extend frontend tests for chat behavior.
-
-**TDD sequence:**
-1. Write tests for:
-   - message submit calls `/chat`,
-   - streaming events append answer text,
-   - citations render with source labels,
-   - disabled state prevents duplicate sends.
-2. Run:
-
-```bash
-cd frontend
-npm test -- chat
-```
-
-Expected first result: fail because page does not exist.
-
-3. Implement chat page using the shared API client.
-4. Run:
-
-```bash
-cd frontend
-npm test -- chat
-```
-
-Expected result: pass.
-
-5. Commit:
-
-```bash
-git add frontend/src/app/chat frontend/tests
-git commit -m "feat: add chat UI"
-```
-
-Acceptance:
-- Chat shows answer, citations, loading state, and errors.
-- Chat does not hide source provenance.
-
-### Task 17: Meetings UI
-
-**Files:**
 - Create `frontend/src/app/meetings/page.tsx`
 - Create `frontend/src/app/meetings/[id]/page.tsx`
-- Create or extend frontend tests for meetings.
-
-**TDD sequence:**
-1. Write tests for:
-   - meetings list renders status and title,
-   - sync button calls `/meetings/sync`,
-   - detail page renders transcript, summary, action items, decisions,
-   - process button calls `/meetings/{id}/process`.
-2. Run:
-
-```bash
-cd frontend
-npm test -- meetings
-```
-
-Expected first result: fail because pages do not exist.
-
-3. Implement meetings pages.
-4. Run:
-
-```bash
-cd frontend
-npm test -- meetings
-```
-
-Expected result: pass.
-
-5. Commit:
-
-```bash
-git add frontend/src/app/meetings frontend/tests
-git commit -m "feat: add meetings UI"
-```
-
-Acceptance:
-- Operators can see ingest and processing state.
-- Meeting details expose the artifacts needed to trust the AI output.
-
-### Task 18: Updates, Settings, And Trace UI
-
-**Files:**
 - Create `frontend/src/app/updates/page.tsx`
 - Create `frontend/src/app/settings/page.tsx`
 - Create `frontend/src/app/trace/page.tsx`
-- Create or extend frontend tests.
+- Create or extend frontend tests
 
-**TDD sequence:**
-1. Write tests for:
-   - updates list renders before/after or content payload,
-   - approve/reject/apply buttons call the correct endpoints,
-   - settings page masks secrets,
-   - trace page renders run status and step names.
-2. Run:
+**Verification:**
+- `cd frontend && npm test`
 
-```bash
-cd frontend
-npm test -- updates settings trace
-```
+**Acceptance:**
+- Chat, Meetings, Updates, Settings, and Trace use a shared shell.
+- Meetings pages surface transcript, summary, decisions, and action items.
+- Updates page makes approval explicit and traceable.
 
-Expected first result: fail because pages do not exist.
-
-3. Implement the three pages.
-4. Run:
-
-```bash
-cd frontend
-npm test -- updates settings trace
-```
-
-Expected result: pass.
-
-5. Commit:
-
-```bash
-git add frontend/src/app/updates frontend/src/app/settings frontend/src/app/trace frontend/tests
-git commit -m "feat: add updates settings and trace UI"
-```
-
-Acceptance:
-- Human approval is explicit.
-- Settings never expose secret values.
-- Agent Trace shows enough detail to audit graph behavior.
-
-### Task 19: Docker Integration And Local Smoke Test
+### Task 16: Docker Smoke And Final Quality Gate
 
 **Files:**
+- Create `frontend/tests/smoke.spec.ts`
 - Modify `docker-compose.yml`
 - Modify `backend/Dockerfile`
 - Modify `frontend/Dockerfile`
-- Create `frontend/tests/smoke.spec.ts`
-- Create or update project README if needed.
+- Update project README if needed
 
-**TDD sequence:**
-1. Write Playwright smoke test for:
-   - home page loads,
-   - unauthenticated protected page redirects,
-   - health endpoint is reachable,
-   - mock-authenticated meetings page can render seeded data.
-2. Run:
+**Verification:**
+- `cd backend && pytest -v`
+- `cd frontend && npm test && npm run build`
+- `docker compose config`
+- If Docker is available: `docker compose up --build` and `curl -fsS http://localhost:8000/health`
 
-```bash
-cd frontend
-npm run test:e2e
-```
-
-Expected first result: fail because the app is not wired for e2e smoke.
-
-3. Wire Docker Compose and test seed configuration.
-4. Run:
-
-```bash
-docker compose up --build
-```
-
-5. In another shell, run:
-
-```bash
-curl -fsS http://localhost:8000/health
-cd frontend
-npm run test:e2e
-```
-
-Expected result: health returns `{"status":"ok"}` and Playwright smoke tests pass.
-
-6. Commit:
-
-```bash
-git add docker-compose.yml backend/Dockerfile frontend/Dockerfile frontend/tests README.md
-git commit -m "test: add local Docker smoke coverage"
-```
-
-Acceptance:
-- The app starts locally through Docker Compose.
-- Health and frontend smoke tests pass.
-- No live OpenAI, Google, Jira, or Notion call is required for smoke tests.
-
-### Task 20: End-To-End Quality Gate
-
-**Files:**
-- No new files required unless tests expose gaps.
-
-**Commands:**
-
-```bash
-cd backend
-pytest -v
-cd ../frontend
-npm test
-npm run build
-cd ..
-docker compose config
-```
-
-If Docker is available:
-
-```bash
-docker compose up --build
-curl -fsS http://localhost:8000/health
-```
-
-Session close commands:
-
-```bash
-bd close <issue-id> --reason "Implemented and verified" --json
-git status
-git pull --rebase
-bd dolt push
-git push
-git status
-```
-
-Acceptance:
+**Acceptance:**
 - Backend tests pass.
 - Frontend unit tests pass.
 - Frontend production build succeeds.
 - Docker Compose config is valid.
-- Code, beads data, and git branch are pushed.
+- No live OpenAI, Google, Jira, or Notion call is required for smoke tests.
 
 ---
 
@@ -1239,23 +636,19 @@ Acceptance:
 1. Scaffold and environment.
 2. SQLite models.
 3. Auth.
-4. OpenAI LLM gateway.
-5. LangGraph state, trace, and meeting graph.
-6. Google Calendar/Meet adapter.
-7. RAG-Anything service.
-8. Scrum agents.
-9. MCP clients.
-10. Proposed updates API.
-11. Chat graph and SSE API.
+4. OpenAI gateway.
+5. DeepAgents runtime, orchestrator, and trace store.
+6. Google Calendar and Meet adapter.
+7. RAG service.
+8. MCP adapter layer.
+9. `meeting_participation` agent.
+10. `jira_notion` agent and updates API.
+11. `user_chat` agent and chat SSE API.
 12. Meetings API and background jobs.
 13. Settings and trace APIs.
-14. Frontend API/auth helpers.
-15. Frontend app shell.
-16. Chat UI.
-17. Meetings UI.
-18. Updates/settings/trace UI.
-19. Docker smoke tests.
-20. Full quality gate and push.
+14. Frontend API and auth helpers.
+15. Frontend shell and primary screens.
+16. Docker smoke tests and final quality gate.
 
 ---
 
@@ -1263,11 +656,11 @@ Acceptance:
 
 1. **External APIs:** Every external integration must have a fake implementation for tests.
 2. **OpenAI cost and availability:** Unit tests must fake `ChatOpenAI`; live calls are reserved for manual smoke checks.
-3. **Meet transcripts:** Missing native transcripts must become `no_transcript`, not a failed meeting.
-4. **MCP instability:** Jira/Notion MCP clients must sit behind local adapters so agents can be tested without remote MCP.
-5. **Traceability:** Every graph run writes `AgentRun` and `AgentStep` rows before UI work depends on traces.
-6. **Human approval:** Dangerous Jira/Notion changes must not be applied from graph nodes directly.
-7. **Scope creep:** Diarization, OCR, browser participant fallback, live assistant, multi-tenant permissions, Cloud Run production hardening, Redis workers, and multi-provider LLM routing are outside MVP v2.
+3. **Transcript gaps:** Missing native transcripts must become `no_transcript`, not a failed meeting.
+4. **MCP instability:** Jira and Notion access must sit behind one adapter layer so agents can be tested without remote MCP.
+5. **Single-container complexity:** Agent orchestration, background jobs, and API routes share one backend process boundary, so runtime contracts must stay explicit and typed.
+6. **Approval safety:** Risky Jira and Notion writes must only happen through `jira_notion` after approval.
+7. **Scope creep:** diarization, OCR, browser participant fallback, live assistant features, multi-tenant permissions, Redis workers, and multi-provider LLM routing are outside MVP v2.
 
 ---
 
@@ -1277,11 +670,11 @@ MVP v2 is complete when:
 
 1. A user from `@municorn.com` can log in.
 2. The backend can sync Calendar events with Meet links.
-3. A meeting can be processed through LangGraph.
+3. Meeting processing runs through the DeepAgents runtime using `meeting_participation` and optional `jira_notion`.
 4. Meeting transcript, summary, decisions, and action items are stored in SQLite.
 5. Meeting artifacts are indexed in RAG-Anything.
-6. Chat answers use LangGraph orchestration and include citations.
-7. Jira/Notion updates are proposed and require approval before risky writes.
+6. Chat answers are produced by `user_chat`, include citations, and can request live Jira or Notion context through `jira_notion`.
+7. Jira and Notion updates are staged, reviewable, and require approval before risky writes.
 8. The UI exposes Chat, Meetings, Updates, Settings, and Agent Trace.
 9. Backend tests, frontend tests, frontend build, and Docker smoke checks pass.
 10. The final session pushes both git and beads data to remote.

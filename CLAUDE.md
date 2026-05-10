@@ -50,20 +50,34 @@ bd close <id>         # Complete work
 <!-- END BEADS INTEGRATION -->
 
 
+## Knowledge Base (Obsidian wiki)
+
+The project's knowledge base lives in `wiki/`. It is the source of truth for architecture, decisions, modules, integrations, and design.
+
+**Read first when you need context** that isn't in the current conversation:
+
+1. `wiki/hot.md` — recent context (~500 words)
+2. `wiki/index.md` — full catalog
+3. `wiki/domains/<area>.md` or the relevant module/decision/concept page
+
+**Update as you work** — keep these three things in sync, nothing else:
+
+- **New module / decision / concept** → add a page under `wiki/<modules|decisions|concepts|entities|flows>/` (use `_templates/` as a starting point) and link it from the matching `_index.md` and from `wiki/index.md`.
+- **Behavior or architecture change** → update the affected `wiki/modules/*.md` or `wiki/domains/*.md` page. Bump `updated:` in frontmatter.
+- **End of session (when something meaningful changed)** → append a dated entry **at the top** of `wiki/log.md` and overwrite `wiki/hot.md` with a fresh ~500-word summary.
+
+Don't create wiki pages for trivial changes. Don't duplicate `bd` issue tracking into the wiki — `bd` is for tasks, the wiki is for durable knowledge.
+
+Sources stay immutable: original docs are snapshotted in `.raw/migrated/`. Edit the curated summary in `wiki/sources/` instead.
+
 ## Build & Test
 
 _Add your build and test commands here_
 
-```bash
-# Example:
-# npm install
-# npm test
-```
-
 ## Architecture Overview
 
-_Add a brief overview of your project architecture_
+See [`wiki/overview.md`](wiki/overview.md) and [`wiki/domains/architecture.md`](wiki/domains/architecture.md).
 
 ## Conventions & Patterns
 
-_Add your project-specific conventions here_
+See [`wiki/meta/conventions.md`](wiki/meta/conventions.md).

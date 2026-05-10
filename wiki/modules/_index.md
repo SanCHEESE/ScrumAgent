@@ -1,0 +1,23 @@
+---
+type: meta
+title: "Modules"
+created: 2026-05-10
+updated: 2026-05-10
+tags: [meta, index, module]
+---
+
+# Modules
+
+Backend code modules. Each page tracks purpose, path, status, dependencies.
+
+| Module | Path | Status |
+|---|---|---|
+| [[runtime-orchestrator]] | `backend/app/runtime/` | planned |
+| [[llm-gateway]] | `backend/app/llm.py` | planned |
+| [[rag]] | `backend/app/rag.py` | planned |
+| [[calendar-sync]] | `backend/app/calendar_sync.py` | planned |
+| [[mcp-clients]] | `backend/app/mcp_clients.py` | planned |
+| [[trace-store]] | `backend/app/trace_store.py` | planned |
+
+> [!gap] Module pages will fill in as code lands.
+> Status flips from `planned` → `active` once the module exists in the repo.

@@ -3,3 +3,11 @@
 .dolt/
 *.db
 .beads-credential-key
+
+# Obsidian (vault files we don't want in git)
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.smart-connections/
+.obsidian-git-data
+.trash/
+.DS_Store

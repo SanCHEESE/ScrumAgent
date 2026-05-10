@@ -1,0 +1,15 @@
+---
+type: meta
+title: "Flows"
+created: 2026-05-10
+updated: 2026-05-10
+tags: [meta, index, flow]
+---
+
+# Flows
+
+Pipelines and sequences across the system.
+
+- [[meeting-processing]] — meeting → analysis → RAG → optional Jira/Notion
+- [[chat]] — user question → RAG → optional live context → answer
+- [[oauth-login]] — Google OAuth callback → JWT

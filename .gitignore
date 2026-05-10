@@ -1,4 +1,14 @@
 \
+# Worktrees for parallel agent work
+.worktrees/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+.env.local
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db

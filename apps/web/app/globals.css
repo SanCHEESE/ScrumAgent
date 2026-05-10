@@ -6,3 +6,6 @@
 
 /* Base, shell, components */
 @import "../styles/base.css";
+
+/* Screens */
+@import "../styles/screens/settings.css";

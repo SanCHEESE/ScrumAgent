@@ -6,3 +6,6 @@
 
 /* Base, shell, components */
 @import "../styles/base.css";
+
+/* Tweaks panel (floating customization UI) */
+@import "../styles/tweaks.css";

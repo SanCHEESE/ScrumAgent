@@ -225,7 +225,7 @@
 .integration-row:last-child {
   border-bottom: 0;
 }
-.integration-icon {
+.settings-integration-icon {
   width: 40px;
   height: 40px;
   border-radius: 10px;
@@ -236,26 +236,26 @@
   color: var(--ink-1);
   flex-shrink: 0;
 }
-.integration-icon.jira {
+.settings-integration-icon.jira {
   background: rgba(0, 119, 230, 0.1);
   color: var(--brand-500);
 }
-.integration-icon.notion {
+.settings-integration-icon.notion {
   background: var(--bg-2);
 }
-.integration-icon.google {
+.settings-integration-icon.google {
   background: rgba(0, 119, 230, 0.06);
   color: var(--brand-500);
 }
-.integration-icon.openai {
+.settings-integration-icon.openai {
   background: rgba(16, 185, 129, 0.1);
   color: var(--ok);
 }
-.integration-icon.slack {
+.settings-integration-icon.slack {
   background: rgba(245, 158, 11, 0.12);
   color: #b45309;
 }
-body.dark .integration-icon.slack {
+body.dark .settings-integration-icon.slack {
   color: #fbbf24;
 }
 .integration-meta {

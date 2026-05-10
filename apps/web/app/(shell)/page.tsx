@@ -45,8 +45,13 @@ export default function HomePage(): JSX.Element {
         setLayoutVariant(readLayoutVariant());
       }
     };
+    const onTweaksChanged = (): void => setLayoutVariant(readLayoutVariant());
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    window.addEventListener("tweaks-changed", onTweaksChanged);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("tweaks-changed", onTweaksChanged);
+    };
   }, []);
 
   const recentMeetings = MEETINGS.slice(0, 3);

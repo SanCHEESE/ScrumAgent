@@ -31,7 +31,7 @@ function IntegrationCard({
 }: IntegrationCardProps): JSX.Element {
   return (
     <div className="integration-row">
-      <div className={`integration-icon ${iconClass}`}>
+      <div className={`settings-integration-icon ${iconClass}`}>
         <Icon name={icon} size={18} />
       </div>
       <div className="integration-meta">

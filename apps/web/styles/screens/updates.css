@@ -1,0 +1,292 @@
+/* ============ Updates screen ============
+ * Ported verbatim from .worktrees/_design-bundle/project/kabanchik-screens.css
+ * Owns: tabs (filter chips), updates split, update card, update detail,
+ * diff, edit-proposal, reasoning, edit-note, link-btn, badge-warn, confidence.
+ */
+
+/* Tabs (filter chips at top of list) */
+.tabs { display: flex; gap: 4px; margin-bottom: 24px; border-bottom: 1px solid var(--line); }
+.tab {
+  padding: 10px 14px;
+  color: var(--ink-2);
+  font-weight: 500;
+  font-size: 13px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tab:hover { color: var(--ink-1); }
+.tab.active { color: var(--ink-1); border-bottom-color: var(--brand-500); }
+.tab-count {
+  background: var(--bg-2);
+  color: var(--ink-2);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.tab.active .tab-count { background: var(--brand-100); color: var(--brand-500); }
+body.dark .tab.active .tab-count { background: var(--brand-100); color: var(--brand-500); }
+
+/* Confidence badges */
+.confidence {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+.confidence-high { background: rgba(16,185,129,0.1); color: var(--ok); }
+.confidence-medium { background: rgba(245,158,11,0.1); color: var(--warn); }
+.confidence-low { background: rgba(239,68,68,0.1); color: var(--danger); }
+
+/* Split layout */
+.updates-split {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.updates-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* Update card (left list) */
+.update-card {
+  padding: 14px;
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s;
+  text-align: left;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+}
+.update-card:hover { border-color: var(--ink-3); }
+.update-card.active {
+  border-color: var(--brand-500);
+  background: var(--bg-0);
+  box-shadow: 0 0 0 3px rgba(0,119,230,0.08);
+}
+.update-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.update-target-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px 7px;
+  border-radius: 6px;
+}
+.update-target-chip.jira { background: rgba(0,119,230,0.1); color: var(--brand-500); }
+.update-target-chip.notion { background: var(--bg-2); color: var(--ink-1); }
+.update-card-object {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--brand-500);
+  margin-bottom: 4px;
+}
+.update-card-type { font-weight: 500; font-size: 13px; margin-bottom: 6px; }
+.update-card-source { font-size: 11px; }
+
+/* "edited by you" chip on the card */
+.update-card-edited {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #b45309;
+  background: rgba(245,158,11,0.12);
+  padding: 2px 7px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+body.dark .update-card-edited { color: #fbbf24; background: rgba(245,158,11,0.18); }
+
+/* Detail pane */
+.update-detail {
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--pad-lg);
+}
+.update-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+.update-detail-title {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin: 12px 0 0;
+}
+
+/* Diff block */
+.update-diff {
+  display: grid;
+  grid-template-columns: 1fr 40px 1fr;
+  gap: 12px;
+  align-items: stretch;
+  margin-bottom: 20px;
+}
+.diff-side {
+  padding: 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--bg-1);
+}
+.diff-before { opacity: 0.7; }
+.diff-after { background: rgba(0,119,230,0.04); border-color: var(--brand-500); }
+body.dark .diff-after { background: rgba(0,119,230,0.1); }
+.diff-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-2);
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+.diff-content { font-size: 14px; line-height: 1.6; min-height: 40px; white-space: pre-wrap; }
+.diff-arrow { display: flex; align-items: center; justify-content: center; color: var(--brand-500); }
+
+/* Edit proposal — amber accents on the After side */
+.diff-side.is-editing {
+  background: rgba(245, 158, 11, 0.06);
+  border-color: var(--warn);
+  box-shadow: 0 0 0 3px rgba(245,158,11,0.12);
+}
+body.dark .diff-side.is-editing { background: rgba(245, 158, 11, 0.1); }
+.diff-editor {
+  width: 100%;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-1);
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  resize: vertical;
+  min-height: 80px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.diff-editor:focus { border-color: var(--brand-500); box-shadow: 0 0 0 3px rgba(0,119,230,0.12); }
+.diff-editor-note {
+  width: 100%;
+  margin-top: 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink-2);
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed var(--line);
+  padding: 6px 2px;
+  outline: none;
+}
+.diff-editor-note:focus { border-bottom-color: var(--brand-500); color: var(--ink-1); }
+.diff-editor-note::placeholder { color: var(--ink-3); font-style: italic; }
+
+/* Warn-tone badge (used for "editing" pill) */
+.badge-warn {
+  background: rgba(245,158,11,0.15);
+  color: #b45309;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+body.dark .badge-warn { background: rgba(245,158,11,0.2); color: #fbbf24; }
+
+/* Edit-note callout above the actions row */
+.edit-note-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--ink-2);
+  background: rgba(245,158,11,0.06);
+  border: 1px dashed rgba(245,158,11,0.4);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  margin-bottom: 20px;
+}
+.edit-note-box strong { color: var(--ink-1); font-weight: 600; }
+
+/* Inline link-style button */
+.link-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--brand-500);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.link-btn:hover { color: var(--brand-600, var(--brand-500)); }
+.link-btn.link-btn-inline { margin-left: 0; }
+
+/* Reasoning callout */
+.reasoning-box {
+  background: var(--bg-1);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  border-left: 3px solid var(--brand-500);
+  margin-bottom: 20px;
+}
+.reasoning-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--brand-500);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.reasoning-text { line-height: 1.6; font-size: 14px; }
+
+/* Action row */
+.update-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.update-actions .spacer { flex: 1; }

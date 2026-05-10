@@ -9,4 +9,13 @@
 
 /* Per-screen styles */
 @import "../styles/screens/home.css";
+@import "../styles/screens/chat.css";
+@import "../styles/screens/meetings.css";
+@import "../styles/screens/updates.css";
 @import "../styles/screens/trace.css";
+@import "../styles/screens/projects.css";
+@import "../styles/screens/settings.css";
+@import "../styles/screens/login.css";
+
+/* Tweaks panel (added once Tweaks branch is merged) */
+@import "../styles/tweaks.css";

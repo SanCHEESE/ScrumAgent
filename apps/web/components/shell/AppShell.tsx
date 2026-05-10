@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { LiveBar } from "./LiveBar";
 import { ProjectSwitcherModal } from "./ProjectSwitcherModal";
 import { Sidebar } from "./Sidebar";
+import { TweaksPanel } from "@/components/tweaks/TweaksPanel";
 
 export interface AppShellProps {
   children: ReactNode;
@@ -35,6 +36,9 @@ export function AppShell({ children }: AppShellProps) {
         open={projectSwitcherOpen}
         onClose={() => setProjectSwitcherOpen(false)}
       />
+      {/* Floating tweaks panel — only mounts inside the shell layout, so
+          /login (which uses a sibling layout) doesn't render it. */}
+      <TweaksPanel />
     </div>
   );
 }

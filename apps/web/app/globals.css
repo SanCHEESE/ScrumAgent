@@ -17,5 +17,5 @@
 @import "../styles/screens/settings.css";
 @import "../styles/screens/login.css";
 
-/* Tweaks panel (added once Tweaks branch is merged) */
+/* Tweaks panel (floating customization UI) */
 @import "../styles/tweaks.css";

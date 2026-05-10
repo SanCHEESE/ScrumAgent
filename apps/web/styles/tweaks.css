@@ -1,0 +1,281 @@
+/* ============ Tweaks panel ============
+ * Ported from /tmp/design-extract/kabanchik-agent/project/tweaks-panel.jsx
+ * (the __TWEAKS_STYLE template literal), with the toggle button added and
+ * `twk-` prefix kept verbatim. The `.__tweaks-panel` class lives in base.css.
+ */
+
+/* Floating toggle button (bottom-right). The panel itself replaces the button
+ * when open, so they share the corner. */
+.twk-toggle-btn {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483645;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0.5px solid rgba(0, 0, 0, 0.1);
+  border-radius: 999px;
+  background: rgba(250, 249, 247, 0.92);
+  color: #29261b;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.twk-toggle-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
+}
+body.dark .twk-toggle-btn {
+  background: rgba(28, 33, 40, 0.92);
+  color: #e8ecef;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.twk-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483646;
+  width: 280px;
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(250, 249, 247, 0.78);
+  color: #29261b;
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+  border: 0.5px solid rgba(255, 255, 255, 0.6);
+  border-radius: 14px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 12px 40px rgba(0, 0, 0, 0.18);
+  font: 11.5px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+}
+body.dark .twk-panel {
+  background: rgba(28, 33, 40, 0.86);
+  color: #e8ecef;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.twk-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 8px 10px 14px;
+  user-select: none;
+}
+.twk-hd b {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.twk-x {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: rgba(41, 38, 27, 0.55);
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+.twk-x:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #29261b;
+}
+body.dark .twk-x {
+  color: rgba(232, 236, 239, 0.55);
+}
+body.dark .twk-x:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e8ecef;
+}
+
+.twk-body {
+  padding: 2px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+.twk-body::-webkit-scrollbar {
+  width: 8px;
+}
+.twk-body::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 2px;
+}
+.twk-body::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.twk-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.twk-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.twk-row-h {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.twk-lbl {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  color: rgba(41, 38, 27, 0.72);
+}
+.twk-lbl > span:first-child {
+  font-weight: 500;
+}
+.twk-val {
+  color: rgba(41, 38, 27, 0.5);
+  font-variant-numeric: tabular-nums;
+}
+body.dark .twk-lbl {
+  color: rgba(232, 236, 239, 0.72);
+}
+body.dark .twk-val {
+  color: rgba(232, 236, 239, 0.5);
+}
+
+.twk-sect {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(41, 38, 27, 0.45);
+  padding: 10px 0 0;
+}
+.twk-sect:first-child {
+  padding-top: 0;
+}
+body.dark .twk-sect {
+  color: rgba(232, 236, 239, 0.45);
+}
+
+.twk-field {
+  appearance: none;
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  border: 0.5px solid rgba(0, 0, 0, 0.1);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.6);
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
+.twk-field:focus {
+  border-color: rgba(0, 0, 0, 0.25);
+  background: rgba(255, 255, 255, 0.85);
+}
+select.twk-field {
+  padding-right: 22px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(0,0,0,.5)' d='M0 0h10L5 6z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+body.dark .twk-field {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+body.dark .twk-field:focus {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+body.dark select.twk-field {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(255,255,255,.5)' d='M0 0h10L5 6z'/></svg>");
+}
+
+.twk-slider {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 4px;
+  margin: 6px 0;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.12);
+  outline: none;
+}
+.twk-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 0.5px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+.twk-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 0.5px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+body.dark .twk-slider {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.twk-seg {
+  position: relative;
+  display: flex;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.06);
+  user-select: none;
+}
+.twk-seg-thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  transition: left 0.15s cubic-bezier(0.3, 0.7, 0.4, 1), width 0.15s;
+}
+.twk-seg button {
+  appearance: none;
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  height: 22px;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 0;
+}
+body.dark .twk-seg {
+  background: rgba(255, 255, 255, 0.08);
+}
+body.dark .twk-seg-thumb {
+  background: rgba(255, 255, 255, 0.18);
+}

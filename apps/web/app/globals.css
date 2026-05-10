@@ -1,0 +1,8 @@
+/* Tailwind utilities (preflight is disabled — custom CSS controls base styles) */
+@tailwind utilities;
+
+/* Design tokens (CSS variables, density, dark mode) */
+@import "../styles/tokens.css";
+
+/* Base, shell, components */
+@import "../styles/base.css";

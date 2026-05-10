@@ -1,8 +1,15 @@
-// Filled in by ScrumAgent-jbk (Chat screen — streaming, tool-use cards, history sidebar).
+import { Suspense } from "react";
+import { ChatScreen } from "@/components/screens/chat/ChatScreen";
+
+/**
+ * Ask-agent screen — streaming chat, agent action trace, tool-use confirmation,
+ * and collapsible session history. Wrapped in Suspense because the screen reads
+ * `?seed=…` via useSearchParams (Next.js 14 requires the boundary).
+ */
 export default function ChatPage() {
   return (
-    <div className="page">
-      <h1 className="page-title">Chat placeholder</h1>
-    </div>
+    <Suspense fallback={null}>
+      <ChatScreen />
+    </Suspense>
   );
 }

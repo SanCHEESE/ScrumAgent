@@ -1,0 +1,261 @@
+/* ============ Meetings screens ============
+ * Ported from .worktrees/_design-bundle/project/kabanchik-screens.css
+ * (lines 103-155). Section names follow the prototype.
+ *
+ * NOTE: `.output-row` is also used by `ProjectSwitcherModal` via base.css
+ * with `border-bottom` semantics. Within meeting cards we scope the
+ * border-top variant under `.meeting-detail-screen` so the two coexist.
+ */
+
+/* Tabs (also used by other screens but defined here because Meetings is the first consumer). */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--line);
+}
+.tab {
+  padding: 10px 14px;
+  color: var(--ink-2);
+  font-weight: 500;
+  font-size: 13px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tab:hover { color: var(--ink-1); }
+.tab.active { color: var(--ink-1); border-bottom-color: var(--brand-500); }
+.tab-count {
+  background: var(--bg-2);
+  color: var(--ink-2);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.tab.active .tab-count { background: var(--brand-100); color: var(--brand-500); }
+body.dark .tab.active .tab-count { background: var(--brand-100); color: var(--brand-500); }
+
+/* Inline search input used in page headers. */
+.input-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0 12px;
+  color: var(--ink-2);
+}
+.input-search:focus-within { border-color: var(--brand-500); }
+.input-bare {
+  background: transparent;
+  border: 0;
+  outline: 0;
+  padding: 8px 0;
+  color: var(--ink-1);
+  min-width: 220px;
+}
+
+/* Meetings table (list). */
+.meetings-table {
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.meetings-table-head,
+.meetings-table-row {
+  display: grid;
+  grid-template-columns: 1.8fr 0.9fr 1.2fr 1fr 0.9fr 28px;
+  gap: 16px;
+  padding: 14px var(--pad-lg);
+  align-items: center;
+}
+.meetings-table-head {
+  background: var(--bg-1);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+  font-weight: 600;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.meetings-table-row {
+  border-top: 1px solid var(--line);
+  cursor: pointer;
+  color: inherit;
+}
+.meetings-table-row:hover { background: var(--bg-1); }
+.mtr-title { font-weight: 500; }
+.mtr-sub { font-size: 11px; margin-top: 2px; }
+.mtr-outputs { display: flex; gap: 10px; align-items: center; }
+.mtr-output {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+/* Back link used at the top of detail pages. */
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-2);
+  padding: 8px 0;
+  font-weight: 500;
+  margin-bottom: 8px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.back-link svg { transform: rotate(180deg); }
+.back-link:hover { color: var(--brand-500); }
+
+/* Two-column grid used by the Summary tab. */
+.card-grid-2 {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: var(--gap);
+  align-items: start;
+}
+
+/* Summary content (rendered from markdown-ish source). */
+.meeting-summary { padding-left: 44px !important; }
+.meeting-summary h4 {
+  font-family: var(--font-display);
+  margin: 20px 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-left: -20px;
+}
+.meeting-summary h4:first-child { margin-top: 0; }
+.meeting-summary p {
+  margin: 0 0 12px;
+  line-height: 1.6;
+  color: var(--ink-1);
+  margin-left: -20px;
+}
+.meeting-summary ul { padding-left: 18px; margin: 6px 0 12px; }
+.meeting-summary li {
+  margin: 6px 0;
+  line-height: 1.5;
+  list-style-position: outside;
+}
+
+/* Meeting-scoped row layouts. We scope under `.meeting-detail-screen` so
+ * we don't disturb base.css `.output-row` used by ProjectSwitcherModal.
+ */
+.meeting-detail-screen .participant-row,
+.meeting-detail-screen .output-row {
+  padding: 12px var(--pad-lg);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+}
+.meeting-detail-screen .participant-row:first-child,
+.meeting-detail-screen .output-row:first-child { border-top: 0; }
+
+/* Transcript tab. */
+.transcript { padding: 0; }
+.transcript-row {
+  padding: 14px var(--pad-lg);
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  border-top: 1px solid var(--line);
+}
+.transcript-row:first-child { border-top: 0; }
+.transcript-time {
+  width: 40px;
+  flex-shrink: 0;
+  padding-top: 4px;
+}
+.transcript-speaker { font-weight: 500; margin-bottom: 2px; }
+.transcript-text { color: var(--ink-1); }
+
+/* Action items tab. */
+.action-row {
+  padding: 14px var(--pad-lg);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+}
+.action-row:first-child { border-top: 0; }
+.action-check {
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--ink-3);
+  border-radius: 4px;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  flex-shrink: 0;
+}
+.action-check.checked { background: var(--ok); border-color: var(--ok); }
+.action-text { font-weight: 500; }
+.action-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.action-meta .action-owner { color: var(--ink-1); }
+.action-meta .action-due { font-family: var(--font-mono); color: var(--ink-2); }
+.action-meta .action-jira { font-family: var(--font-mono); color: var(--brand-500); }
+
+/* Decisions tab. */
+.decision-card {
+  padding: var(--pad-md) var(--pad-lg);
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+.decision-index {
+  font-size: 11px;
+  color: var(--ink-2);
+  padding-top: 2px;
+  flex-shrink: 0;
+  width: 32px;
+  letter-spacing: 0.05em;
+}
+.decision-text { line-height: 1.5; font-size: 15px; }
+
+/* Confidence chip used in Decisions and Updates. Ported from kabanchik.css. */
+.confidence {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+.confidence-high { background: rgba(16,185,129,0.1); color: var(--ok); }
+.confidence-medium { background: rgba(245,158,11,0.1); color: var(--warn); }
+.confidence-low { background: rgba(239,68,68,0.1); color: var(--danger); }
+
+/* Empty / processing states for non-done meetings. */
+.meeting-empty {
+  padding: 40px 24px;
+  text-align: center;
+}
+.meeting-empty .empty-title { margin-top: 0; }
+.meeting-empty .progress-bar {
+  max-width: 320px;
+  margin: 24px auto 0;
+}

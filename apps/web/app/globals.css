@@ -8,4 +8,5 @@
 @import "../styles/base.css";
 
 /* Per-screen styles */
+@import "../styles/screens/home.css";
 @import "../styles/screens/trace.css";

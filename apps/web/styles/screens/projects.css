@@ -1,0 +1,372 @@
+/* ============ Projects + Add wizard ============
+ * Selectors ported from
+ * .worktrees/_design-bundle/project/kabanchik-screens.css
+ * (.projects-grid / .project-tile / .project-dot / .pst-* /
+ *  .wizard-progress / .wps-* / .info-box / .chip-group / .choice-chip /
+ *  .toggle / .permission-row / .notion-db-picker / .db-option /
+ *  .invite-box / .invite-chip / .ready-summary)
+ *
+ * The full-page wizard layout (.wizard-page-card / .wizard-page-body /
+ * .wizard-page-footer) extends the modal-flavoured CSS for the standalone
+ * /projects/new route.
+ */
+
+/* ============ Projects grid ============ */
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+.project-tile {
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+  transition: border-color 0.15s;
+  display: block;
+  color: inherit;
+}
+.project-tile:hover { border-color: var(--brand-500); }
+.project-tile-name {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin: 16px 0 6px;
+}
+.project-tile-desc { font-size: 13px; margin-bottom: 10px; }
+.project-tile-email { font-size: 11px; color: var(--ink-2); }
+.project-tile-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+.pst-num {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+.pst-label {
+  font-size: 10px;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 2px;
+}
+.project-error {
+  margin-top: 12px;
+  padding: 8px 10px;
+  background: rgba(239,68,68,0.08);
+  color: var(--danger);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.project-tile-add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border-style: dashed;
+  cursor: pointer;
+  min-height: 260px;
+}
+.project-tile-add:hover { border-color: var(--brand-500); color: var(--brand-500); }
+.add-circle {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--bg-1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand-500);
+}
+.project-tile-add:hover .add-circle { background: var(--brand-100); }
+
+/* ============ Wizard progress steps ============ */
+.wizard-progress {
+  display: flex;
+  align-items: center;
+  padding: 16px var(--pad-lg);
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line);
+  gap: 8px;
+  overflow-x: auto;
+}
+.wizard-progress-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.wps-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--bg-0);
+  border: 1.5px solid var(--ink-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-2);
+  flex-shrink: 0;
+}
+.wps-label { font-size: 12px; color: var(--ink-2); }
+.wizard-progress-step.active .wps-dot {
+  background: var(--brand-500);
+  color: #fff;
+  border-color: var(--brand-500);
+}
+.wizard-progress-step.active .wps-label { color: var(--ink-1); font-weight: 500; }
+.wizard-progress-step.done .wps-dot {
+  background: var(--ok);
+  color: #fff;
+  border-color: var(--ok);
+}
+.wizard-progress-step + .wizard-progress-step::before {
+  content: '';
+  width: 24px;
+  height: 1px;
+  background: var(--ink-3);
+  display: block;
+  margin-right: 8px;
+}
+
+/* Linear progress bar under steps */
+.wizard-progress-bar {
+  height: 2px;
+  background: var(--bg-2);
+  position: relative;
+  overflow: hidden;
+}
+.wizard-progress-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--brand-500);
+  transition: width 0.25s ease;
+}
+
+/* ============ Wizard form helpers ============ */
+.info-box {
+  padding: 14px 16px;
+  background: var(--brand-100);
+  border-radius: var(--radius-sm);
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-1);
+}
+body.dark .info-box { background: rgba(0,119,230,0.1); }
+.info-box svg { color: var(--brand-500); flex-shrink: 0; margin-top: 2px; }
+.info-box-sm { padding: 10px 14px; font-size: 12px; }
+
+.chip-group { display: flex; flex-wrap: wrap; gap: 6px; }
+.choice-chip {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--bg-0);
+  user-select: none;
+}
+.choice-chip:hover { border-color: var(--ink-3); }
+.choice-chip.selected {
+  background: var(--brand-500);
+  color: #fff;
+  border-color: var(--brand-500);
+}
+
+.permission-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+.toggle {
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--ink-3);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.15s;
+  flex-shrink: 0;
+  border: 0;
+  padding: 0;
+}
+.toggle.on { background: var(--brand-500); }
+.toggle-knob {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  transition: left 0.15s;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+.toggle.on .toggle-knob { left: 19px; }
+
+/* Generic 'integration card' (Google / Jira / Notion connect tile) */
+.integration-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-0);
+}
+.integration-card.connected {
+  border-color: var(--ok);
+  background: rgba(16,185,129,0.04);
+}
+.integration-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-1);
+  color: var(--brand-500);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.integration-card.connected .integration-icon {
+  background: rgba(16,185,129,0.1);
+  color: var(--ok);
+}
+
+.notion-db-picker { display: flex; flex-direction: column; gap: 6px; }
+.db-option {
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-0);
+}
+.db-option:hover { border-color: var(--ink-3); }
+.db-option.selected {
+  border-color: var(--brand-500);
+  background: rgba(0,119,230,0.04);
+}
+.db-option span { flex: 1; }
+
+.invite-box {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  background: var(--bg-0);
+}
+.invite-box:focus-within { border-color: var(--brand-500); }
+.invite-chip {
+  background: var(--bg-1);
+  border-radius: 12px;
+  padding: 4px 4px 4px 10px;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Multi-row invite form (email + role per row) */
+.invite-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.invite-input { flex: 1; }
+
+.ready-summary {
+  background: var(--bg-1);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-top: 8px;
+}
+
+/* Color swatches for the project Details step */
+.color-picker { display: flex; gap: 8px; }
+.color-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  padding: 0;
+  display: inline-block;
+}
+.color-swatch.selected {
+  border-color: var(--ink-1);
+  box-shadow: 0 0 0 2px var(--bg-0);
+}
+
+/* ============ Full-page wizard shell ============
+ * Mirrors the modal CSS but renders in-page rather than as an overlay.
+ */
+.wizard-page-card {
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+.wizard-page-body { padding: var(--pad-lg); }
+.wizard-page-footer {
+  padding: var(--pad-md) var(--pad-lg);
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.generated-email {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-1);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--brand-600);
+}
+body.dark .generated-email { color: var(--brand-500); }
+
+/* Toast for create-success state */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink-1);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 1000;
+}
+body.dark .toast { background: var(--bg-2); color: var(--ink-1); }

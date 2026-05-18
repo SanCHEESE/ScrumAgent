@@ -1,40 +1,48 @@
 ---
 type: meta
 title: "Hot Cache"
-updated: 2026-05-10T20:30:00
+updated: 2026-05-18T13:00:00
 tags: [meta, hot-cache]
 ---
 
 # Recent Context
 
 ## Last Updated
-2026-05-10. Frontend implementation kicked off. Full design prototype ported to a runnable Next.js 14 app.
+2026-05-18. Scope updates: Jira moves to Rovo; GCP deploy target = single Compute Engine VM. Backend implementation about to start.
 
 ## Key Recent Facts
-- Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker Compose service for Municorn (`@municorn.com`).
-- Two services: `backend` (FastAPI + DeepAgents + 3 agents + SQLite + RAG-Anything + MCP) and `frontend` (Next.js 14 + TypeScript at `apps/web/`).
+- Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker Compose service for Municorn (`@municorn.com`). GCP deploy added as a second target (single GCE VM) — see [[decisions/2026-05-18-gcp-compute-engine-deployment]].
+- Two services: `backend` (FastAPI + DeepAgents + 3 agents + SQLite + RAG-Anything) and `frontend` (Next.js 14 + TypeScript at `apps/web/`).
 - Three agents only: `meeting_participation`, `user_chat`, `jira_notion`. No agent-to-agent calls outside the orchestrator.
-- LLM is OpenAI-only via `langchain-openai`. RAG is RAG-Anything. Jira and Notion live behind MCP adapters.
-- Canonical execution plan: [[sources/mvp-v2-plan]].
-- Issue tracking: `bd` (beads).
+- LLM is OpenAI-only via `langchain-openai`. RAG is RAG-Anything.
+- **Jira via Atlassian Rovo** (direct vendor integration, not MCP) — see [[decisions/2026-05-18-rovo-replaces-jira-mcp]] and [[modules/rovo-client]].
+- **Notion via MCP** (unchanged) — [[modules/mcp-clients]] is now Notion-only.
+- Canonical execution plan: [[sources/mvp-v2-plan]]. Issue tracking: `bd` (beads).
 
-## Frontend (new)
-- Lives in `apps/web/`. Next.js 14 App Router, TypeScript strict, Tailwind utility-only (preflight off).
-- Routes implemented: `/`, `/chat`, `/meetings`, `/meetings/[id]`, `/updates`, `/trace`, `/projects`, `/projects/new`, `/settings`, `/login`.
-- Design system: ported from Kabanchik prototype. CSS variables (`--brand-*`, `--ink-*`, `--bg-*`), three densities, light/dark, accent hue runtime-tunable.
-- Tweaks panel: floating bottom-right; persists to `localStorage["kabanchik.tweaks"]` (JSON) plus `localStorage["tweaks.layoutVariant"]` (string mirror for the home screen).
-- Mocks: `apps/web/lib/mock-data.ts` exports `PROJECTS`, `PARTICIPANTS`, `MEETINGS`, `UPDATES`, `TRACE_RUNS`. No backend wired yet.
-- Tests: Playwright at `apps/web/tests/e2e/`. 38 tests, all passing. Run `cd apps/web && npm run test:e2e`.
-- Build: `cd apps/web && npm run build` — passes, 12 routes.
+## Backend status
+- Not started. Only `apps/web/` exists. All backend modules listed in [[modules/_index]] are `planned`.
+- Beads work queue laid out 2026-05-18: bootstrap → models → 6 parallel modules (auth, llm, rag, rovo, mcp-notion, calendar) → trace-store → orchestrator → 3 agents → routers → frontend wiring. GCE provisioning is parallel to all backend work.
 
-## Recent Changes
-- Bootstrapped Next.js 14 foundation via parallel agent in worktree (`a39c207a7b5962e32`).
-- 9 parallel screen agents in isolated worktrees built Home / Chat / Meetings / Updates / Trace / Projects / Settings / Login / Tweaks panel; all merged to main.
-- 9 parallel code-reviewer agents reviewed each implementation; critical fixes applied (tweaks-changed event listener on Home; `.integration-icon` CSS scope leak).
-- Playwright + UI tests for all screens added; 38/38 pass.
-- Follow-ups for deferred review feedback in `bd-d5g`.
+## GCP deploy shape (one VM, lift-and-shift Compose)
+- `e2-standard-2` VM + 100 GB persistent SSD at `/opt/scrumagent/data/` (holds `db/`, `rag/`, `keys/`).
+- Caddy fronts 8000/3000 with Let's Encrypt.
+- Secret Manager → `.env` + `sa_key.json` at boot.
+- Static IP + Cloud DNS. Daily disk snapshot.
+- New env block: `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_ZONE`, `PUBLIC_HOSTNAME`, `LETSENCRYPT_EMAIL`, `SM_*` secret refs. Same `GOOGLE_CLIENT_ID/SECRET` reused; OAuth callback gets a second authorized URI under `${PUBLIC_HOSTNAME}`.
+
+## Rovo migration cheatsheet
+- Removed env: `ATLASSIAN_MCP_URL`, `ATLASSIAN_API_TOKEN`.
+- Added env: `ROVO_BASE_URL`, `ROVO_API_TOKEN`, `ATLASSIAN_SITE_URL`, `ATLASSIAN_USER_EMAIL`.
+- New backend module: `backend/app/rovo_client.py` ([[modules/rovo-client]]).
+- `backend/app/mcp_clients.py` becomes Notion-only.
+- `jira_notion` agent uses two transports internally (Rovo + Notion MCP). Capability boundary unchanged.
+
+## Frontend
+- `apps/web/`, Next.js 14 App Router, TypeScript strict, Tailwind utility-only. 12 routes built, mocks in `apps/web/lib/mock-data.ts`. Playwright 38/38 green.
+- Frontend-backend wiring is a separate beads task (`ScrumAgent-r0k`), blocked on routers.
 
 ## Active Threads
-- Open: `bd-d5g` — apply remaining P2 review feedback (a11y for home rows, projects toast auto-dismiss, sparkline memoization, settings switch exhaustiveness, etc.).
-- Backend implementation has not started. Frontend uses mocks only.
-- Tweaks panel layout-variant change now propagates same-tab via custom `tweaks-changed` event.
+- Open: `ScrumAgent-d5g` — P2 frontend review follow-ups.
+- Open: `ScrumAgent-7we` — prereqs (Rovo + GCP credentials, ops setup).
+- Open: `ScrumAgent-9cg` — backend bootstrap (unblocks 6 parallel modules).
+- Open backend chain: bootstrap → models → modules → orchestrator → agents → routers → frontend wiring.

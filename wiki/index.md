@@ -2,7 +2,7 @@
 type: meta
 title: "Wiki Index"
 created: 2026-05-10
-updated: 2026-05-10
+updated: 2026-05-18
 tags: [meta, index]
 ---
 
@@ -43,6 +43,7 @@ See [[modules/_index]] for full list. Highlights:
 - [[modules/llm-gateway]]
 - [[modules/rag]]
 - [[modules/calendar-sync]]
+- [[modules/rovo-client]]
 - [[modules/mcp-clients]]
 - [[modules/trace-store]]
 
@@ -58,6 +59,7 @@ See [[modules/_index]] for full list. Highlights:
 - [[entities/municorn]]
 - [[entities/google-workspace]]
 - [[entities/jira]]
+- [[entities/atlassian-rovo]]
 - [[entities/notion]]
 - [[entities/openai]]
 

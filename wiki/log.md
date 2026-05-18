@@ -2,13 +2,27 @@
 type: meta
 title: "Wiki Log"
 created: 2026-05-10
-updated: 2026-05-10
+updated: 2026-05-18
 tags: [meta, log]
 ---
 
 # Wiki Log
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
+
+---
+
+## 2026-05-18 — Rovo replaces Jira MCP + GCP Compute Engine deploy target
+
+Two scope changes landed simultaneously, both driven by user directive:
+
+**1) Jira moves off MCP to Atlassian Rovo.** A new module [[modules/rovo-client]] replaces the Jira side of [[modules/mcp-clients]]; the latter is now Notion-only. The `jira_notion` agent gains Rovo AI capabilities (cross-Jira search, summarization, generated update text, Rovo Agent invocation). Notion stays on MCP. Capability boundary in [[domains/agents]] is unchanged. New ADR: [[decisions/2026-05-18-rovo-replaces-jira-mcp]]. Env shift: `ATLASSIAN_MCP_URL` / `ATLASSIAN_API_TOKEN` → `ROVO_BASE_URL` / `ROVO_API_TOKEN` / `ATLASSIAN_SITE_URL` / `ATLASSIAN_USER_EMAIL`.
+
+**2) GCP deployment target = single Compute Engine VM.** Local Docker Compose stays canonical. Cloud target lifts-and-shifts the same compose stack onto a GCE VM with a 100 GB persistent SSD at `/opt/scrumagent/data/`. Caddy fronts ports 8000/3000 with auto Let's Encrypt. Secrets via Secret Manager. Daily disk snapshots. No backend code change required — SQLite + RAG-Anything keep their filesystem assumptions. Cloud Run was considered and rejected (would force Postgres + GCS migration). New ADR: [[decisions/2026-05-18-gcp-compute-engine-deployment]].
+
+**Wiki updates:** new pages [[modules/rovo-client]], [[entities/atlassian-rovo]], two ADRs. Edited [[modules/mcp-clients]] (Notion-only), [[concepts/mcp]] (Notion-only), [[entities/jira]] (access via Rovo), [[domains/integrations]] (env block + Rovo section), [[domains/deployment]] (full GCE deploy section + env reference + rollout phase), [[domains/agents]] (`jira_notion` transport split), indexes for modules / decisions / entities, top-level [[index]].
+
+**Beads:** updated `ScrumAgent-ilz` (Notion-only scope), `ScrumAgent-2u9` (Rovo + Notion transport), `ScrumAgent-7we` (prereqs: Rovo + GCP creds). New issues for Rovo client module and GCE Terraform/provisioning.
 
 ---
 

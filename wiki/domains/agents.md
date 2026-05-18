@@ -2,7 +2,7 @@
 type: domain
 title: "Agents"
 created: 2026-05-10
-updated: 2026-05-10
+updated: 2026-05-18
 tags: [domain, agents]
 ---
 
@@ -33,14 +33,15 @@ Three agents, fixed for MVP. Each has a hard capability boundary enforced by the
 
 ## `jira_notion`
 
-**Owns:** every Jira/Notion read and write.
+**Owns:** every Jira and Notion read and write.
 
-- All Atlassian + Notion MCP reads.
+- Jira access via [[modules/rovo-client]] (Atlassian Rovo — see [[decisions/2026-05-18-rovo-replaces-jira-mcp]]). Includes Rovo AI capabilities: cross-Jira search, summarization, generated update text.
+- Notion access via [[modules/mcp-clients]] (Notion MCP).
 - Generates **staged** updates that wait for approval.
-- Creates or appends meeting notes in the permitted Notion parent.
+- Creates or appends meeting notes in the permitted Notion parent (auto, no staging).
 - Applies risky writes only after explicit user approval.
 
-**Cannot:** read Google artifacts. Cannot generate the final chat answer.
+**Cannot:** read Google artifacts. Cannot generate the final chat answer. The two-transport asymmetry (Rovo + MCP) is internal to this agent; orchestrator boundary is unchanged.
 
 ## Why exactly three
 

@@ -2,12 +2,17 @@
 # Worktrees for parallel agent work
 .worktrees/
 
+# Secrets — never commit real env or SA keys
+.env
+.env.*
+!.env.example
+data/keys/
+
 # Node / Next.js
 node_modules/
 .next/
 out/
 *.tsbuildinfo
-.env.local
 
 # Beads / Dolt files (added by bd init)
 .dolt/

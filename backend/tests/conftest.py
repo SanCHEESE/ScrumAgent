@@ -16,8 +16,9 @@ from sqlalchemy.pool import StaticPool
 
 from app import deps
 from app.config import Settings
-from app.database import Base
+from app.database import Base, init_db, make_engine
 from app.main import app
+from app.security import crypto
 
 TEST_SECRET = "router-test-secret"
 
@@ -56,12 +57,9 @@ class FakeGoogleOAuth:
 
 @pytest.fixture
 def db_session() -> Iterator[Session]:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(engine)
+    crypto.configure(TEST_SECRET)
+    engine = make_engine("sqlite://")
+    init_db(engine)
     factory = sessionmaker(bind=engine, autoflush=False, future=True)
     db = factory()
     try:

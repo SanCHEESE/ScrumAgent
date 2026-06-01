@@ -2,7 +2,7 @@
 type: meta
 title: "Modules"
 created: 2026-05-10
-updated: 2026-05-18
+updated: 2026-06-01
 tags: [meta, index, module]
 ---
 
@@ -12,6 +12,7 @@ Backend code modules. Each page tracks purpose, path, status, dependencies.
 
 | Module | Path | Status |
 |---|---|---|
+| [[auth]] | `backend/app/routers/auth.py` | active |
 | [[runtime-orchestrator]] | `backend/app/runtime/` | planned |
 | [[llm-gateway]] | `backend/app/llm.py` | planned |
 | [[rag]] | `backend/app/rag.py` | planned |

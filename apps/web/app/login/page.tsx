@@ -9,9 +9,10 @@
 // `app/login/layout.tsx`.
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
+import { consumeTokenFromHash, startGoogleLogin } from "@/lib/auth";
 import "@/styles/screens/login.css";
 
 const APP_VERSION = "v0.1.0";
@@ -20,11 +21,19 @@ export default function LoginPage() {
   const router = useRouter();
   const [signingIn, setSigningIn] = useState(false);
 
+  // Returning from the backend OAuth callback with `#token=…`: stash it and
+  // enter the app.
+  useEffect(() => {
+    if (consumeTokenFromHash()) {
+      router.replace("/");
+    }
+  }, [router]);
+
   function handleSignIn() {
     if (signingIn) return;
     setSigningIn(true);
-    // Mock auth — frontend prototype only. Navigate to the home/dashboard.
-    router.push("/");
+    // Hand off to the backend, which redirects to Google consent.
+    startGoogleLogin();
   }
 
   return (

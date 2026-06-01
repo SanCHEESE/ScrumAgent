@@ -12,6 +12,18 @@ Append-only chronological record. Newest entries on top. Never edit past entries
 
 ---
 
+## 2026-06-01 — Auth landed: Google OAuth login + JWT (ScrumAgent-u2b)
+
+First authenticated slice. TDD'd Google OAuth 2.0 login restricted to `@municorn.com`, issuing a backend-signed JWT. New module [[modules/auth]] = `app/oauth.py` (`GoogleOAuthClient`: pure consent-URL builder + httpx code-exchange + userinfo — injectable so tests fake it), `app/security.py` (HS256 create/decode over `SECRET_KEY`, 24h `jwt_ttl_hours`), `app/routers/auth.py` (`/auth/google/start` → 307 consent with CSRF `state` cookie; `/auth/google/callback` → state-check 400, code exchange, `hd`/email domain gate 403, upsert on `google_sub`, 302 to `{FRONTEND}/login#token=…`; `/auth/me`), and `deps.get_current_user` (bearer → `User`, else 401). Added a **minimal** `User` model (`app/models.py`) — full schema stays ScrumAgent-67j (noted there). `main.py` now includes the router, adds CORS for the frontend origin, and creates tables in a lifespan hook (`Base.metadata.create_all`, no Alembic yet).
+
+**Decisions:** identity read from Google's **userinfo endpoint** (token already trusted via TLS+secret exchange) instead of local id_token verification → no `google-auth`, deps stay lean. JWT delivered to the SPA via **URL fragment** + `localStorage` (`kabanchik.token`), not a cross-origin cookie (dev is http `:3000`/`:8000` where `Secure`/`SameSite=None` is painful). Revisit httpOnly-cookie + CSRF for the https GCP deploy.
+
+**Frontend** wired: `apps/web/lib/auth.ts` (`startGoogleLogin`, `consumeTokenFromHash`, token store) + the `/login` page now redirects to the backend and consumes the returned token.
+
+**Verification:** 20 pytest green under `-W error` (3 security + 9 flow + 8 prior). Real-app smoke confirmed `/auth/google/start` builds a correct consent URL (real client id, `redirect_uri=localhost:8000/auth/google/callback`, `scope=openid email profile`, `hd=municorn.com`, state cookie). Browser preview confirmed the login page renders clean and the `#token=…` → `localStorage` + redirect-to-`/` path works. Closed u2b (`--force`; was graph-blocked by 67j, satisfied by the inline User). Follow-up ScrumAgent-sdc: attach the bearer token to the frontend API client + guard `(shell)` routes (depends on real routers 2jb).
+
+---
+
 ## 2026-06-01 — Backend bootstrap landed; credentials wired on personal account
 
 First backend code. Implementation started against `@municorn` **personal** accounts (personal Atlassian/Notion/Calendar, self-funded GCP) ahead of a later corporate migration.

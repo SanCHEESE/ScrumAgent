@@ -2,7 +2,7 @@
 type: flow
 title: "OAuth login"
 created: 2026-05-10
-updated: 2026-05-10
+updated: 2026-06-01
 tags: [flow, auth, oauth]
 ---
 
@@ -20,3 +20,6 @@ tags: [flow, auth, oauth]
 
 - Only `@municorn.com` users can log in.
 - Calendar/Meet access uses a **separate** service account with domain-wide delegation, not the user's OAuth tokens. See [[entities/google-workspace]].
+
+> [!done] Implemented 2026-06-01 (ScrumAgent-u2b) — see [[modules/auth]].
+> Refinements vs the sketch above: a CSRF `state` cookie guards the callback; the JWT is handed back via a URL **fragment** (`/login#token=…`), not a cross-origin cookie; identity is read from Google's userinfo endpoint rather than verifying the id_token locally.

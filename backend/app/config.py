@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     # --- core defaults ---
     openai_model: str = "gpt-5.4-mini"
     allowed_domain: str = "municorn.com"
+    jwt_ttl_hours: int = 24
     backend_base_url: str = "http://localhost:8000"
     frontend_base_url: str = "http://localhost:3000"
     database_url: str = "sqlite:////app/data/db/scrumagent.db"

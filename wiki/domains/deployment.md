@@ -2,7 +2,7 @@
 type: domain
 title: "Deployment"
 created: 2026-05-10
-updated: 2026-05-18
+updated: 2026-05-22
 tags: [domain, deployment, docker, gcp]
 ---
 
@@ -11,7 +11,7 @@ tags: [domain, deployment, docker, gcp]
 Two deployment paths:
 
 1. **Local** (canonical, dev) — Docker Compose on the developer's machine.
-2. **Google Cloud (Compute Engine VM)** — single VM running the same Docker Compose stack on a persistent disk. See [[decisions/2026-05-18-gcp-compute-engine-deployment]].
+2. **Google Cloud (Compute Engine VM)** — single VM running the same Docker Compose stack on a persistent disk. See [[decisions/2026-05-18-gcp-compute-engine-deployment]] and the connectivity diagram in [[flows/gcp-deployment-topology]].
 
 Source: [[sources/tech-architecture]] §9–10, ADRs above.
 

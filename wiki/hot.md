@@ -1,14 +1,14 @@
 ---
 type: meta
 title: "Hot Cache"
-updated: 2026-05-18T13:00:00
+updated: 2026-05-22T12:00:00
 tags: [meta, hot-cache]
 ---
 
 # Recent Context
 
 ## Last Updated
-2026-05-18. Scope updates: Jira moves to Rovo; GCP deploy target = single Compute Engine VM. Backend implementation about to start.
+2026-05-22. New visual: [[flows/gcp-deployment-topology]] — Mermaid connectivity diagram for the GCE deploy (edge / VM / state / control plane + external integrations). Backend implementation about to start; scope unchanged from 2026-05-18 (Rovo for Jira, single Compute Engine VM).
 
 ## Key Recent Facts
 - Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker Compose service for Municorn (`@municorn.com`). GCP deploy added as a second target (single GCE VM) — see [[decisions/2026-05-18-gcp-compute-engine-deployment]].

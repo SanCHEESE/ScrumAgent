@@ -2,7 +2,7 @@
 type: meta
 title: "Wiki Index"
 created: 2026-05-10
-updated: 2026-05-18
+updated: 2026-05-22
 tags: [meta, index]
 ---
 
@@ -72,6 +72,7 @@ See [[modules/_index]] for full list. Highlights:
 - [[flows/meeting-processing]]
 - [[flows/chat]]
 - [[flows/oauth-login]]
+- [[flows/gcp-deployment-topology]]
 
 ## Sources
 

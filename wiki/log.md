@@ -2,13 +2,19 @@
 type: meta
 title: "Wiki Log"
 created: 2026-05-10
-updated: 2026-05-18
+updated: 2026-05-22
 tags: [meta, log]
 ---
 
 # Wiki Log
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
+
+---
+
+## 2026-05-22 save — GCP deployment topology diagram
+
+Added [[flows/gcp-deployment-topology]] — Mermaid connectivity diagram showing the full GCP deploy: edge plane (Cloud DNS → Static IP → Caddy/TLS), in-VM service plane (frontend + backend container with DeepAgents orchestrator and three agents), state plane (SQLite + RAG-Anything on persistent SSD), GCP control plane (Secret Manager, daily snapshots), and external integrations (OpenAI, Atlassian Rovo, Notion MCP, Google OAuth/Calendar/Meet). Linked from [[flows/_index]], top-level [[index]], and [[domains/deployment]]. No architecture change — purely a visual synthesis of what was decided on 2026-05-18.
 
 ---
 

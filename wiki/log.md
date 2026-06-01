@@ -2,13 +2,25 @@
 type: meta
 title: "Wiki Log"
 created: 2026-05-10
-updated: 2026-05-22
+updated: 2026-06-01
 tags: [meta, log]
 ---
 
 # Wiki Log
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
+
+---
+
+## 2026-06-01 — Backend bootstrap landed; credentials wired on personal account
+
+First backend code. Implementation started against `@municorn` **personal** accounts (personal Atlassian/Notion/Calendar, self-funded GCP) ahead of a later corporate migration.
+
+**Credentials** (`ScrumAgent-7we`, advanced not closed): `.env` populated and validated green by a new `scripts/sanity_check.py` (standalone `uv` probe of OpenAI / Google OAuth / Atlassian / Notion). Model corrected to `gpt-5.4-mini` (the key cannot see `gpt-5.5-mini`/`gpt-4.1-mini`). Deferred: Google service-account + domain-wide delegation (no Workspace admin → blocks slice 3 meetings — see memory), full GCP deploy block. Notion will use a self-hosted MCP / direct REST with the static `ntn_` token, **not** the hosted OAuth endpoint.
+
+**Bootstrap** (`ScrumAgent-9cg`): TDD'd `backend/` scaffold — `app/main.py` (`GET /health`), `config.py` (typed pydantic-settings, fail-fast on missing secrets), `database.py` (decoupled engine/session helpers + `Base`), `deps.py` (cached `get_settings`/`get_db`). 8 pytest green; `uvicorn` serves `/health` 200. `Dockerfile` + `docker-compose.yml` (backend :8000, frontend :3000 dev-mode, `./data` volumes). **Lean deps on purpose** — deepagents/raganything/google/mcp land with their own modules so the image always builds. Container build itself pending (Docker daemon was down). Follow-up filed for a production frontend Dockerfile.
+
+**Build order** (user directive): jira_notion slice → RAG → orchestrator, value-first. Real dependency path still requires bootstrap → models → auth/llm → thin orchestrator → jira_notion.
 
 ---
 

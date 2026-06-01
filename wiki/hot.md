@@ -1,48 +1,39 @@
 ---
 type: meta
 title: "Hot Cache"
-updated: 2026-05-22T12:00:00
+updated: 2026-06-01T12:00:00
 tags: [meta, hot-cache]
 ---
 
 # Recent Context
 
 ## Last Updated
-2026-05-22. New visual: [[flows/gcp-deployment-topology]] — Mermaid connectivity diagram for the GCE deploy (edge / VM / state / control plane + external integrations). Backend implementation about to start; scope unchanged from 2026-05-18 (Rovo for Jira, single Compute Engine VM).
+2026-06-01. **Backend implementation started.** Credentials wired + validated on personal `@municorn` accounts; `backend/` scaffold bootstrapped via TDD. Build order is value-first: jira_notion slice → RAG → orchestrator.
 
 ## Key Recent Facts
-- Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker Compose service for Municorn (`@municorn.com`). GCP deploy added as a second target (single GCE VM) — see [[decisions/2026-05-18-gcp-compute-engine-deployment]].
-- Two services: `backend` (FastAPI + DeepAgents + 3 agents + SQLite + RAG-Anything) and `frontend` (Next.js 14 + TypeScript at `apps/web/`).
-- Three agents only: `meeting_participation`, `user_chat`, `jira_notion`. No agent-to-agent calls outside the orchestrator.
-- LLM is OpenAI-only via `langchain-openai`. RAG is RAG-Anything.
-- **Jira via Atlassian Rovo** (direct vendor integration, not MCP) — see [[decisions/2026-05-18-rovo-replaces-jira-mcp]] and [[modules/rovo-client]].
-- **Notion via MCP** (unchanged) — [[modules/mcp-clients]] is now Notion-only.
-- Canonical execution plan: [[sources/mvp-v2-plan]]. Issue tracking: `bd` (beads).
+- Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker Compose service for Municorn (`@municorn.com`). Second deploy target = single GCE VM ([[decisions/2026-05-18-gcp-compute-engine-deployment]], topology in [[flows/gcp-deployment-topology]]).
+- Two services: `backend` (FastAPI + DeepAgents + 3 agents + SQLite + RAG-Anything) and `frontend` (Next.js 14 + TS at `apps/web/`).
+- Three agents only: `meeting_participation`, `user_chat`, `jira_notion`. Orchestrator-mediated; no agent-to-agent calls.
+- LLM is OpenAI-only via `langchain-openai`, model **`gpt-5.4-mini`** (key can't see 5.5/4.1). RAG is RAG-Anything.
+- **Jira via Atlassian Rovo** ([[decisions/2026-05-18-rovo-replaces-jira-mcp]], [[modules/rovo-client]]). **Notion via MCP** ([[modules/mcp-clients]], Notion-only).
+- Canonical plan: [[sources/mvp-v2-plan]]. Tracking: `bd` (beads). TDD mandatory.
+
+## Environment / setup status (personal account)
+- `.env` at repo root (gitignored), validated green by `scripts/sanity_check.py` (standalone `uv` probe: OpenAI / Google OAuth / Atlassian / Notion).
+- Google OAuth Web client live (redirect `localhost:8000/auth/google/callback`). GCP scope so far = project + APIs + OAuth only; VM/Terraform/Secret Manager deferred.
+- **Deferred:** Google service-account + domain-wide delegation (no Workspace admin) → **blocks slice 3 (meetings)**; full GCP deploy. See `bd` memory `slice-3-meeting-participation-on-personal-municorn-no`.
+- Notion transport will be self-hosted MCP / direct REST with static `ntn_` token, NOT the hosted OAuth endpoint.
 
 ## Backend status
-- Not started. Only `apps/web/` exists. All backend modules listed in [[modules/_index]] are `planned`.
-- Beads work queue laid out 2026-05-18: bootstrap → models → 6 parallel modules (auth, llm, rag, rovo, mcp-notion, calendar) → trace-store → orchestrator → 3 agents → routers → frontend wiring. GCE provisioning is parallel to all backend work.
-
-## GCP deploy shape (one VM, lift-and-shift Compose)
-- `e2-standard-2` VM + 100 GB persistent SSD at `/opt/scrumagent/data/` (holds `db/`, `rag/`, `keys/`).
-- Caddy fronts 8000/3000 with Let's Encrypt.
-- Secret Manager → `.env` + `sa_key.json` at boot.
-- Static IP + Cloud DNS. Daily disk snapshot.
-- New env block: `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_ZONE`, `PUBLIC_HOSTNAME`, `LETSENCRYPT_EMAIL`, `SM_*` secret refs. Same `GOOGLE_CLIENT_ID/SECRET` reused; OAuth callback gets a second authorized URI under `${PUBLIC_HOSTNAME}`.
-
-## Rovo migration cheatsheet
-- Removed env: `ATLASSIAN_MCP_URL`, `ATLASSIAN_API_TOKEN`.
-- Added env: `ROVO_BASE_URL`, `ROVO_API_TOKEN`, `ATLASSIAN_SITE_URL`, `ATLASSIAN_USER_EMAIL`.
-- New backend module: `backend/app/rovo_client.py` ([[modules/rovo-client]]).
-- `backend/app/mcp_clients.py` becomes Notion-only.
-- `jira_notion` agent uses two transports internally (Rovo + Notion MCP). Capability boundary unchanged.
-
-## Frontend
-- `apps/web/`, Next.js 14 App Router, TypeScript strict, Tailwind utility-only. 12 routes built, mocks in `apps/web/lib/mock-data.ts`. Playwright 38/38 green.
-- Frontend-backend wiring is a separate beads task (`ScrumAgent-r0k`), blocked on routers.
+- **Bootstrapped** (`ScrumAgent-9cg`, code done, container build pending Docker daemon). `backend/`: `app/{main,config,database,deps}.py`, `tests/` (8 green), `Dockerfile`, `requirements.txt` (lean), root `docker-compose.yml`. `GET /health` → `{"status":"ok"}`.
+- Lean deps deliberate: deepagents/raganything/google/mcp added by their own module issues so the image always builds.
+- Still `planned`: models, auth, llm, rag, rovo, mcp-notion, calendar, trace-store, orchestrator, 3 agents, routers, frontend wiring.
 
 ## Active Threads
-- Open: `ScrumAgent-d5g` — P2 frontend review follow-ups.
-- Open: `ScrumAgent-7we` — prereqs (Rovo + GCP credentials, ops setup).
-- Open: `ScrumAgent-9cg` — backend bootstrap (unblocks 6 parallel modules).
-- Open backend chain: bootstrap → models → modules → orchestrator → agents → routers → frontend wiring.
+- `ScrumAgent-7we` — prereqs (claimed; credential validation done, SA-key + GCP deferred).
+- `ScrumAgent-9cg` — bootstrap (claimed; **code complete**, needs `docker compose up --build` confirmation once Docker Desktop is up).
+- New follow-up: production frontend multi-stage Dockerfile (blocks GCP deploy `ScrumAgent-5hb`).
+- `ScrumAgent-d5g` — P2 frontend review follow-ups (open).
+
+## Next (value-first slice 1 = jira_notion)
+Real path: `67j` models → `u2b` auth + `wqj` llm → thin orchestrator (`die`) routing to one agent → `qor` Rovo + `ilz` Notion MCP → `2u9` jira_notion agent → minimal routers (`2jb`) → see staged-write on the frontend.

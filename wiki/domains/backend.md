@@ -10,6 +10,8 @@ tags: [domain, backend, python]
 
 Single Python container. FastAPI + DeepAgents runtime + 3 agents + SQLite + RAG + MCP, all in one process. Source: [[sources/tech-architecture]], [[sources/mvp-v2-plan]].
 
+> [!key-insight] Status (2026-06-01): scaffold **bootstrapped** (`ScrumAgent-9cg`) — `main.py` (`/health`), `config.py`, `database.py`, `deps.py` exist with tests green. The rest of the layout below is still `planned`. Dependencies are added **lazily per module** (lean `requirements.txt`), not all up front, so the image always builds from a clean checkout.
+
 ## Layout
 
 ```text

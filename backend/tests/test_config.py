@@ -11,18 +11,21 @@ REQUIRED = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _hermetic_env(monkeypatch):
+    """Clear every Settings-backed env var so tests don't depend on ambient
+    environment. In Docker, compose injects the real .env as env vars — without
+    this, default/None assertions silently read production values."""
+    for field in Settings.model_fields:
+        monkeypatch.delenv(field.upper(), raising=False)
+
+
 def _set_required(monkeypatch):
     for key, value in REQUIRED.items():
         monkeypatch.setenv(key, value)
 
 
-def _clear_required(monkeypatch):
-    for key in REQUIRED:
-        monkeypatch.delenv(key, raising=False)
-
-
-def test_missing_required_fails_fast(monkeypatch):
-    _clear_required(monkeypatch)
+def test_missing_required_fails_fast():
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
 

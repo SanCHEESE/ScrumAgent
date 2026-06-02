@@ -1,6 +1,12 @@
 # Kabanchik local stack. Canonical dev path (GCP deploy lifts-and-shifts this).
 #   docker compose up --build   →  backend :8000, frontend :3000
 #
+# Docker daemon: Colima — Docker Desktop is NOT required. One-time setup:
+#   brew install colima docker docker-compose docker-buildx
+#   colima start --cpu 6 --memory 8 --disk 60 --vm-type vz --mount-type virtiofs
+# The docker/compose CLIs talk to Colima via the `colima` docker context.
+# Full notes: wiki/domains/deployment.md → "Local Docker daemon (Colima)".
+#
 # State lives on the host under ./data so it survives container rebuilds:
 #   data/db   — SQLite
 #   data/rag  — RAG-Anything store

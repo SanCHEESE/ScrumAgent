@@ -2,7 +2,7 @@
 type: domain
 title: "Deployment"
 created: 2026-05-10
-updated: 2026-05-22
+updated: 2026-06-01
 tags: [domain, deployment, docker, gcp]
 ---
 
@@ -31,9 +31,46 @@ docker compose up --build
 
 ### Local requirements
 
-- Docker + Docker Compose
-- Google Workspace tenant with native Meet artifacts available
-- Service account with domain-wide delegation
+- Docker engine + Docker Compose v2 + Buildx (see "Local Docker daemon" below)
+- Google Workspace tenant with native Meet artifacts available *(slice 3 only)*
+- Service account with domain-wide delegation *(slice 3 only)*
+
+### Local Docker daemon (Colima — no Docker Desktop)
+
+macOS has no native Docker daemon: containers need a Linux engine running in a small
+VM. **Docker Desktop is not required** — the supported daemon is
+[Colima](https://github.com/abiosoft/colima) (a thin manager over a Lima VM). The
+`docker` CLI and the `compose`/`buildx` plugins are installed from Homebrew, fully
+independent of Docker Desktop.
+
+One-time setup (Apple Silicon):
+
+```bash
+# CLI + plugins + daemon. Homebrew's bin precedes any Docker.app symlinks in PATH,
+# so `docker` resolves to the brew client even with Desktop still installed.
+brew install colima docker docker-compose docker-buildx
+mkdir -p ~/.docker/cli-plugins
+ln -sfn /opt/homebrew/lib/docker/cli-plugins/docker-compose ~/.docker/cli-plugins/docker-compose
+ln -sfn /opt/homebrew/lib/docker/cli-plugins/docker-buildx  ~/.docker/cli-plugins/docker-buildx
+
+# Start the VM: Apple Virtualization.framework (vz) + fast virtiofs bind mounts.
+colima start --cpu 6 --memory 8 --disk 60 --vm-type vz --mount-type virtiofs
+```
+
+`colima start` creates and switches to the `colima` docker context, so `docker` and
+`docker compose up --build` work unchanged. Verify with `docker context ls` (the
+`colima` row is active) and `colima status`.
+
+Notes:
+
+- When dropping Docker Desktop, remove `"credsStore": "desktop"` from
+  `~/.docker/config.json`. Otherwise `docker` shells out to the Desktop credential
+  helper and even anonymous pulls of public images can fail once Desktop is gone.
+- Survive reboot: `brew services start colima` (reuses the saved cpu/mem/vz profile).
+  Disable Docker Desktop's "open at login" so it doesn't relaunch and grab ports.
+- Lifecycle: `colima start` / `colima stop`; `colima delete` wipes the VM.
+- The same `docker compose` stack runs on the GCE VM (Linux) unchanged — Colima is a
+  macOS-host concern only.
 
 ---
 

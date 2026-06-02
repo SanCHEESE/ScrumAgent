@@ -1,6 +1,9 @@
-import type { JSX } from "react";
+"use client";
+
+import { useState, type JSX } from "react";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
+import { ApiError, api } from "@/lib/api";
 import type { WizardFormData } from "./types";
 
 export interface StepJiraProps {
@@ -8,7 +11,47 @@ export interface StepJiraProps {
   onChange: (patch: Partial<WizardFormData>) => void;
 }
 
+type TestState =
+  | { kind: "idle" }
+  | { kind: "testing" }
+  | { kind: "ok"; label: string }
+  | { kind: "fail"; label: string };
+
 export function StepJira({ data, onChange }: StepJiraProps): JSX.Element {
+  const [test, setTest] = useState<TestState>({ kind: "idle" });
+
+  const canTest =
+    data.jiraSiteUrl.trim() !== "" &&
+    data.jiraUserEmail.trim() !== "" &&
+    data.jiraApiToken.trim() !== "";
+
+  const runTest = async () => {
+    setTest({ kind: "testing" });
+    try {
+      const result = await api.testJira({
+        site_url: data.jiraSiteUrl,
+        user_email: data.jiraUserEmail,
+        api_token: data.jiraApiToken,
+      });
+      setTest(
+        result.ok
+          ? { kind: "ok", label: "Connected" }
+          : { kind: "fail", label: result.error ?? "Invalid credentials" },
+      );
+    } catch (e) {
+      setTest({
+        kind: "fail",
+        label: e instanceof ApiError ? e.message : "Request failed",
+      });
+    }
+  };
+
+  // Editing any field invalidates a prior result.
+  const update = (patch: Partial<WizardFormData>) => {
+    if (test.kind !== "idle") setTest({ kind: "idle" });
+    onChange(patch);
+  };
+
   return (
     <div className="vstack">
       <div>
@@ -19,8 +62,36 @@ export function StepJira({ data, onChange }: StepJiraProps): JSX.Element {
           id="jira-url"
           className="input"
           placeholder="https://municorn.atlassian.net"
-          value={data.jiraUrl}
-          onChange={(e) => onChange({ jiraUrl: e.target.value })}
+          value={data.jiraSiteUrl}
+          onChange={(e) => update({ jiraSiteUrl: e.target.value })}
+        />
+      </div>
+
+      <div>
+        <label className="label" htmlFor="jira-email">
+          Atlassian account email
+        </label>
+        <input
+          id="jira-email"
+          className="input"
+          type="email"
+          placeholder="agent@municorn.com"
+          value={data.jiraUserEmail}
+          onChange={(e) => update({ jiraUserEmail: e.target.value })}
+        />
+      </div>
+
+      <div>
+        <label className="label" htmlFor="jira-token">
+          API token
+        </label>
+        <input
+          id="jira-token"
+          className="input"
+          type="password"
+          placeholder="Paste a working Atlassian API token"
+          value={data.jiraApiToken}
+          onChange={(e) => update({ jiraApiToken: e.target.value })}
         />
       </div>
 
@@ -33,50 +104,34 @@ export function StepJira({ data, onChange }: StepJiraProps): JSX.Element {
           className="input"
           placeholder="PLAT"
           value={data.jiraProjectKey}
-          onChange={(e) =>
-            onChange({ jiraProjectKey: e.target.value.toUpperCase() })
-          }
+          onChange={(e) => update({ jiraProjectKey: e.target.value.toUpperCase() })}
         />
       </div>
 
-      <div
-        className={`integration-card ${data.jiraConnected ? "connected" : ""}`}
-      >
-        <div className="integration-icon">
-          <Icon name="jira" size={20} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 500 }}>Atlassian / Jira</div>
-          <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-            {data.jiraConnected
-              ? "Connected · read + comment + transition"
-              : "Read issues, post comments, and transition status"}
-          </div>
-        </div>
-        {data.jiraConnected ? (
-          <span
-            className="hstack"
-            style={{ color: "var(--ok)", fontSize: 12, fontWeight: 500 }}
-          >
+      <div className="hstack" style={{ gap: 12 }}>
+        <Button variant="secondary" onClick={runTest} disabled={!canTest || test.kind === "testing"}>
+          <Icon name="link" size={14} />
+          {test.kind === "testing" ? "Testing…" : "Test connection"}
+        </Button>
+        {test.kind === "ok" && (
+          <span className="hstack" style={{ color: "var(--ok)", fontSize: 12, fontWeight: 500 }}>
             <Icon name="check" size={14} />
-            Connected
+            {test.label}
           </span>
-        ) : (
-          <Button
-            variant="secondary"
-            onClick={() => onChange({ jiraConnected: true })}
-          >
-            <Icon name="link" size={14} />
-            Connect Atlassian
-          </Button>
+        )}
+        {test.kind === "fail" && (
+          <span className="hstack" style={{ color: "var(--danger)", fontSize: 12 }}>
+            <Icon name="alert" size={14} />
+            {test.label}
+          </span>
         )}
       </div>
 
       <div className="info-box info-box-sm">
         <Icon name="alert" size={12} />
         <div className="muted">
-          The agent needs read access to issues and sprints. Status
-          transitions and ticket creation require per-action approval.
+          Optional — you can connect Jira later in Settings. If you paste a token
+          here, it must validate before the project is created.
         </div>
       </div>
     </div>

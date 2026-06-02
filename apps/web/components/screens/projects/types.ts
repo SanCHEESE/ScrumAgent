@@ -1,29 +1,29 @@
 // Shared types for the Add Project wizard.
 
-export type InviteRole = "Member" | "Admin";
-
-export interface Invite {
-  email: string;
-  role: InviteRole;
-}
+/** Suggested default for the agent's Google Workspace account. */
+export const DEFAULT_AGENT_EMAIL = "telecom.scrum.agent@municorn.com";
 
 export interface WizardFormData {
-  // Step 1
+  // Step 1 — Details
   name: string;
   description: string;
   color: string;
-  // Step 2
-  googleConnected: boolean;
-  // Step 3
-  jiraUrl: string;
+  // Step 2 — Google Workspace (agent account, authorized via OAuth popup)
+  agentEmail: string;
+  /** Set once the agent account has been authorized (one-shot session handle). */
+  googleAuthSessionId: string | null;
+  /** The account that actually consented (returned by the popup). */
+  googleAccountEmail: string | null;
+  // Step 3 — Jira (optional)
+  jiraSiteUrl: string;
+  jiraUserEmail: string;
+  jiraApiToken: string;
   jiraProjectKey: string;
-  jiraConnected: boolean;
-  // Step 4
-  notionWorkspaceUrl: string;
-  notionDb: string;
-  notionConnected: boolean;
-  // Step 5
-  invites: Invite[];
+  // Step 4 — Notion (optional)
+  notionToken: string;
+  notionSectionUrl: string;
+  // Step 5 — Select team members
+  selectedUserIds: number[];
 }
 
 export const COLOR_SWATCHES: readonly string[] = [
@@ -37,24 +37,14 @@ export const INITIAL_FORM: WizardFormData = {
   name: "",
   description: "",
   color: COLOR_SWATCHES[0] ?? "#0077e6",
-  googleConnected: false,
-  jiraUrl: "",
+  agentEmail: DEFAULT_AGENT_EMAIL,
+  googleAuthSessionId: null,
+  googleAccountEmail: null,
+  jiraSiteUrl: "",
+  jiraUserEmail: "",
+  jiraApiToken: "",
   jiraProjectKey: "PLAT",
-  jiraConnected: false,
-  notionWorkspaceUrl: "",
-  notionDb: "",
-  notionConnected: false,
-  invites: [{ email: "", role: "Member" }],
+  notionToken: "",
+  notionSectionUrl: "",
+  selectedUserIds: [],
 };
-
-/** Slugify a project name into a Google account handle. */
-export function slugify(name: string): string {
-  const trimmed = name.trim().toLowerCase();
-  if (!trimmed) return "team";
-  return (
-    trimmed
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 32) || "team"
-  );
-}

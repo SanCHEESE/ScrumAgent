@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { JSX } from "react";
 import { Icon } from "@/components/ui/Icon";
-import { ProjectsList } from "@/components/screens/projects/ProjectsList";
+import { ProjectsListLive } from "@/components/screens/projects/ProjectsListLive";
 
 interface ProjectsPageProps {
   searchParams?: { created?: string };
@@ -26,7 +26,7 @@ export default function ProjectsPage({
         </Link>
       </div>
 
-      <ProjectsList />
+      <ProjectsListLive />
 
       {justCreated && (
         <div className="toast" role="status">

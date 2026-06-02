@@ -13,6 +13,8 @@ pydantic-settings>=2.3,<3.0
 
 # --- persistence ---
 SQLAlchemy>=2.0,<3.0
+psycopg[binary]>=3.1,<4.0   # Cloud SQL Postgres driver (prod); SQLite locally
+cryptography>=42.0,<46.0    # Fernet — integration secrets encrypted at rest
 
 # --- auth (JWT) ---
 python-jose[cryptography]>=3.3,<4.0

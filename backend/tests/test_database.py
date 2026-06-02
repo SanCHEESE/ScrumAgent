@@ -1,7 +1,7 @@
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
-from app.database import Base, make_engine, make_session_factory
+from app.database import Base, init_db, make_engine, make_session_factory
 
 
 def test_engine_and_session_roundtrip():
@@ -14,11 +14,6 @@ def test_engine_and_session_roundtrip():
 
 def test_base_has_metadata():
     assert hasattr(Base, "metadata")
-
-
-from sqlalchemy import text
-
-from app.database import init_db, make_engine, make_session_factory
 
 
 def test_sqlite_foreign_keys_enabled():
@@ -41,7 +36,5 @@ def test_in_memory_uses_shared_connection():
 def test_init_db_creates_tables():
     engine = make_engine("sqlite://")
     init_db(engine)
-    from sqlalchemy import inspect
-
     names = set(inspect(engine).get_table_names())
     assert {"users", "conversations", "messages", "meetings", "trace_runs"} <= names

@@ -36,3 +36,12 @@ def test_in_memory_uses_shared_connection():
         s.commit()
     with factory() as s:
         assert s.execute(text("SELECT x FROM t")).scalar() == 1
+
+
+def test_init_db_creates_tables():
+    engine = make_engine("sqlite://")
+    init_db(engine)
+    from sqlalchemy import inspect
+
+    names = set(inspect(engine).get_table_names())
+    assert {"users", "conversations", "messages", "meetings", "trace_runs"} <= names

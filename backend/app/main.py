@@ -8,24 +8,21 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import models  # noqa: F401  — registers ORM tables on Base
-from app.database import Base
-from app.deps import get_engine
+from app.database import init_db, make_engine
+from app.deps import get_settings
 from app.routers import auth
+from app.security import crypto
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    engine = get_engine()
-    # Ensure the SQLite parent dir exists for local (non-Docker) runs.
-    if engine.url.drivername.startswith("sqlite") and engine.url.database:
-        Path(engine.url.database).parent.mkdir(parents=True, exist_ok=True)
-    Base.metadata.create_all(engine)
+async def lifespan(_app):
+    settings = get_settings()
+    crypto.configure(settings.secret_key)
+    init_db(make_engine(settings.database_url))
     yield
 
 

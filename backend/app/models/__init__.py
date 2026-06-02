@@ -5,6 +5,12 @@ from app.models.meeting import Meeting, MeetingArtifact
 from app.models.update import Update
 from app.models.trace import TraceRun, TraceStep
 from app.models.integration import Integration
+from app.models.project import (
+    PendingOAuth,
+    Project,
+    ProjectCredential,
+    ProjectMember,
+)
 
 __all__ = [
     "User",
@@ -16,4 +22,8 @@ __all__ = [
     "TraceRun",
     "TraceStep",
     "Integration",
+    "Project",
+    "ProjectMember",
+    "ProjectCredential",
+    "PendingOAuth",
 ]

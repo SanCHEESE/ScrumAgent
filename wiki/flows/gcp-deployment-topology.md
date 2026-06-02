@@ -2,7 +2,7 @@
 type: flow
 title: "GCP deployment topology"
 created: 2026-05-22
-updated: 2026-05-22
+updated: 2026-06-02
 tags: [flow, gcp, deployment, topology, diagram]
 status: developing
 related:
@@ -58,7 +58,7 @@ flowchart TB
                     A2["user_chat"]
                     A3["jira_notion"]
                     RAG[("RAG-Anything")]
-                    DB[("SQLite")]
+                    DB[("Relational DB<br/>SQLite local · Cloud SQL prod")]
                 end
             end
 
@@ -135,13 +135,12 @@ The three agents (`meeting_participation`, `user_chat`, `jira_notion`) never cal
 
 ## State plane
 
-The persistent SSD (100 GB) is mounted at `/opt/scrumagent/data/` and is the only stateful artifact on the VM. Layout:
+The persistent SSD (100 GB) is mounted at `/opt/scrumagent/data/` and holds the non-relational state on the VM:
 
-- `db/dev.db` — SQLite tables (`agent_runs`, `agent_steps`, meeting artifacts, users, settings). Source of truth for [[modules/trace-store]].
 - `rag/` — RAG-Anything vector index + raw chunks ([[modules/rag]]).
 - `keys/sa_key.json` — Google service account key for domain-wide delegation; written from Secret Manager at boot, never committed.
 
-Daily Compute Engine snapshot of the whole disk is the recovery mechanism. Rollback = restore from snapshot.
+**Relational state lives in a managed Cloud SQL for PostgreSQL instance in prod** (users, conversations/messages, meetings/artifacts, updates, trace runs/steps, integrations) — see [[decisions/2026-06-01-cloud-sql-postgres-prod-db]]. Locally the same schema runs on a SQLite file under `db/`. The ORM is dialect-portable; the engine is chosen by `DATABASE_URL`. Cloud SQL provides its own backups/PITR; daily disk snapshots cover the RAG/keys SSD. (The detailed provisioning page [[domains/deployment]] still describes SQLite-on-SSD and is pending update.)
 
 ## External integrations
 

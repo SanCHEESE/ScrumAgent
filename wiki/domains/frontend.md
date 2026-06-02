@@ -2,7 +2,7 @@
 type: domain
 title: "Frontend"
 created: 2026-05-10
-updated: 2026-05-10
+updated: 2026-06-02
 tags: [domain, frontend, nextjs]
 ---
 
@@ -15,6 +15,7 @@ Next.js 14 (App Router) + TypeScript + Tailwind + shadcn/ui. Talks only to the [
 | Section | Purpose |
 |---|---|
 | **Login / Callback** | Receives JWT from backend after Google OAuth. |
+| **Projects** | Grid of real projects (`GET /projects`) + Add Project wizard that provisions an agent Google account (offline-OAuth popup), Jira/Notion tokens, and team members. See [[modules/project-provisioning]]. |
 | **Chat** | SSE-streamed Q&A with citations. |
 | **Meetings** | List + detail: transcript, summary, action items, decisions, linked Jira issues / Notion pages. |
 | **Updates** | Staged Jira/Notion changes with approve / reject / apply. Shows the reason each change was proposed. |

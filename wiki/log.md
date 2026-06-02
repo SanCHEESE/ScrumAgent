@@ -2,13 +2,31 @@
 type: meta
 title: "Wiki Log"
 created: 2026-05-10
-updated: 2026-06-01
+updated: 2026-06-02
 tags: [meta, log]
 ---
 
 # Wiki Log
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
+
+---
+
+## 2026-06-02 — Production-ready project creation, full-stack (ScrumAgent-lb9)
+
+Shipped the Add Project wizard end-to-end on branch `feat/project-creation-lb9` (TDD; **71 backend pytest + 5 Playwright e2e green**). New backend **Project domain** ([[modules/project-provisioning]]): `Project`, `ProjectMember` (composite PK + role), `ProjectCredential` (1:1, Fernet-encrypted secrets), `PendingOAuth` (one-shot bridge). The agent's Google account is authorized via **offline OAuth** (refresh token, `calendar.events`) — service account / domain-wide delegation stay deferred (no Workspace admin); see [[decisions/2026-06-02-agent-google-offline-oauth]]. Consent runs in a **popup** (preserves wizard state) bound by a signed `state` JWT (`security/_state.py`); the callback writes a `PendingOAuth` and `postMessage`s the result back; `POST /projects` consumes it (Google is a hard gate). Jira/Notion tokens are pasted, live-validated (`app/integrations.py` — Atlassian `/myself` + Notion `/users/me`), **re-validated server-side at create (422)** when present and otherwise skippable; the Notion section link is parsed to a page id. Members are selected from existing users (`GET /users/directory`); a `ProjectMember` row is what makes a project appear in their list.
+
+**Frontend** ([[domains/frontend]]): `apps/web/lib/api.ts` (Bearer `apiFetch`), all five wizard steps rewired, "Invite team" → **"Select team members"**, `/projects` list reads real data via `ProjectsListLive`. Browser- and e2e-verified the agent-email default (`telecom.scrum.agent@municorn.com`), the Google gate, and the create POST.
+
+**Decisions:** secrets isolated in a 1:1 `ProjectCredential` (not on `Project`); `agent_email` comes from the consented account, not the client; the shell project-switcher/chat/meetings deliberately stay on mock data (scoped out). **Prerequisite:** register the `calendar.events` scope + the `{backend}/projects/integrations/google/callback` redirect URI in the Google Cloud console. **Follow-ups:** migrate the shell off mock (extends `ScrumAgent-r0k`), Alembic for the 4 new tables (`ScrumAgent-soe`), email-invite flow for not-yet-signed-in members. Design spec: `docs/superpowers/specs/2026-06-02-production-ready-project-creation-design.md`.
+
+---
+
+## 2026-06-01 — Local Docker daemon moved to Colima (no Docker Desktop)
+
+The local stack no longer depends on Docker Desktop. macOS has no native Docker daemon, so the canonical `docker compose up --build` now runs against **Colima** (Lima VM on Apple Virtualization.framework `vz`, with `virtiofs` bind mounts). The `docker` CLI plus the `compose`/`buildx` plugins were reinstalled from Homebrew (`/opt/homebrew/bin` precedes the old `Docker.app` symlinks in `PATH`), so they no longer belong to Desktop. `"credsStore": "desktop"` was removed from `~/.docker/config.json` — otherwise `docker` shells out to the Desktop credential helper and even anonymous pulls of public images break once Desktop is gone.
+
+Verified end-to-end with Docker Desktop **fully quit**: `colima start --cpu 6 --memory 8 --disk 60 --vm-type vz --mount-type virtiofs` → `colima` docker context active → `docker compose up --build backend` builds and runs → `GET /health` returns `200 {"status":"ok"}`, container reports healthy, in-container pytest all green. Desktop was not uninstalled (left dormant; only the root `vmnetd` helper lingers, harmless). Setup documented in [[domains/deployment]] ("Local Docker daemon") and the `docker-compose.yml` header. Tracked as `ScrumAgent-2s3`.
 
 ---
 

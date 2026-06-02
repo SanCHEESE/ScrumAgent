@@ -40,6 +40,7 @@ Master catalog of all wiki pages. Updated on every ingest.
 See [[modules/_index]] for full list. Highlights:
 
 - [[modules/auth]]
+- [[modules/project-provisioning]]
 - [[modules/runtime-orchestrator]]
 - [[modules/llm-gateway]]
 - [[modules/rag]]

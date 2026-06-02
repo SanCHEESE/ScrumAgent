@@ -54,6 +54,23 @@ def get_google_oauth(settings: Settings = Depends(get_settings)) -> GoogleOAuthC
     )
 
 
+def get_agent_google_oauth(
+    settings: Settings = Depends(get_settings),
+) -> GoogleOAuthClient:
+    """OAuth client for the *agent's* Google account (offline / Calendar grant).
+
+    Same Google app as the login client, but a distinct redirect URI so the
+    consent popup returns to the project-provisioning callback.
+    """
+    return GoogleOAuthClient(
+        client_id=settings.google_client_id,
+        client_secret=settings.google_client_secret,
+        redirect_uri=(
+            f"{settings.backend_base_url}/projects/integrations/google/callback"
+        ),
+    )
+
+
 _bearer = HTTPBearer(auto_error=False)
 
 

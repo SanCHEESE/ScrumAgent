@@ -21,6 +21,13 @@ AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v3/userinfo"
 SCOPES = ("openid", "email", "profile")
+# The agent account grants Calendar (read + write events) so the agent can see
+# and manage the team schedule. ``access_type=offline`` yields a refresh token.
+AGENT_SCOPES = (
+    "openid",
+    "email",
+    "https://www.googleapis.com/auth/calendar.events",
+)
 
 
 class GoogleOAuthClient:
@@ -29,15 +36,23 @@ class GoogleOAuthClient:
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
 
-    def authorization_url(self, state: str, *, hosted_domain: str | None = None) -> str:
+    def authorization_url(
+        self,
+        state: str,
+        *,
+        hosted_domain: str | None = None,
+        scopes: tuple[str, ...] | None = None,
+        access_type: str = "online",
+        prompt: str = "select_account",
+    ) -> str:
         params: dict[str, str] = {
             "client_id": self.client_id,
             "redirect_uri": self.redirect_uri,
             "response_type": "code",
-            "scope": " ".join(SCOPES),
+            "scope": " ".join(scopes or SCOPES),
             "state": state,
-            "access_type": "online",
-            "prompt": "select_account",
+            "access_type": access_type,
+            "prompt": prompt,
         }
         if hosted_domain:
             params["hd"] = hosted_domain  # UI hint only — re-verified server-side

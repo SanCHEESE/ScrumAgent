@@ -14,6 +14,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
 from jose import JWTError
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.config import Settings
@@ -21,8 +22,10 @@ from app.deps import (
     get_agent_google_oauth,
     get_current_user,
     get_db,
+    get_integration_validators,
     get_settings,
 )
+from app.integrations import IntegrationValidators
 from app.models import PendingOAuth, User
 from app.models.types import uuid_str
 from app.oauth import AGENT_SCOPES, GoogleOAuthClient
@@ -31,6 +34,16 @@ from app.security import sign_oauth_state, verify_oauth_state
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 GOOGLE_PROVIDER = "google"
+
+
+class JiraTestRequest(BaseModel):
+    site_url: str
+    user_email: str
+    api_token: str
+
+
+class NotionTestRequest(BaseModel):
+    token: str
 
 
 @router.post("/integrations/google/start")
@@ -99,6 +112,30 @@ async def google_callback(
     db.commit()
 
     return _popup_html(settings, ok=True, session_id=session_id, email=email)
+
+
+@router.post("/integrations/jira/test")
+async def jira_test(
+    req: JiraTestRequest,
+    _user: User = Depends(get_current_user),
+    validators: IntegrationValidators = Depends(get_integration_validators),
+) -> dict:
+    """Confirm a Jira site + token actually authenticate."""
+    result = await validators.validate_jira(
+        site_url=req.site_url, user_email=req.user_email, api_token=req.api_token
+    )
+    return {"ok": result.ok, "detail": result.detail, "error": result.error}
+
+
+@router.post("/integrations/notion/test")
+async def notion_test(
+    req: NotionTestRequest,
+    _user: User = Depends(get_current_user),
+    validators: IntegrationValidators = Depends(get_integration_validators),
+) -> dict:
+    """Confirm a Notion integration token actually authenticates."""
+    result = await validators.validate_notion(token=req.token)
+    return {"ok": result.ok, "detail": result.detail, "error": result.error}
 
 
 def _popup_html(

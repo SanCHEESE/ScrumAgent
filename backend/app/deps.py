@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
 from app.database import make_engine, make_session_factory
+from app.integrations import IntegrationValidators
 from app.models import User
 from app.oauth import GoogleOAuthClient
 from app.security import decode_access_token
@@ -69,6 +70,11 @@ def get_agent_google_oauth(
             f"{settings.backend_base_url}/projects/integrations/google/callback"
         ),
     )
+
+
+def get_integration_validators() -> IntegrationValidators:
+    """Live Jira/Notion credential checkers (network-touching; faked in tests)."""
+    return IntegrationValidators()
 
 
 _bearer = HTTPBearer(auto_error=False)

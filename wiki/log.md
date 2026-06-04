@@ -2,13 +2,19 @@
 type: meta
 title: "Wiki Log"
 created: 2026-05-10
-updated: 2026-06-02
+updated: 2026-06-04
 tags: [meta, log]
 ---
 
 # Wiki Log
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
+
+---
+
+## 2026-06-04 — Real auth identity in the sidebar + graceful session expiry (ScrumAgent-9pf)
+
+Frontend-only. The sidebar-footer user chip is now `components/shell/UserMenu.tsx` and reflects the **real** signed-in user (name + initials avatar from `/auth/me`, JWT `email` claim as an instant label) instead of the hard-coded mock `alice`; clicking it opens a Sign out menu, and with no token it offers Sign in → `/login`. The API client (`apps/web/lib/api.ts`) now treats **any 401 as an expired/invalid session**: it clears `localStorage["kabanchik.token"]` and redirects to `/login` rather than surfacing a dead "Invalid or expired token" — which is exactly what was breaking the **Projects** page for users whose earlier login had expired. `UserMenu` validates via `/auth/me` on mount, so expired sessions bounce to login on app load, not only on Projects. Added `tests/e2e/auth.spec.ts` (4 cases) and repaired the stale `login.spec.ts` sign-in test (it now asserts hand-off to the backend OAuth start rather than the old mock route-to-home). **44/44 Playwright e2e green, tsc clean.** Verified live against the running backend (minted dev token → real name + Sign out; bogus token → `/projects` redirects to `/login`, no error). See [[modules/auth]] → *Frontend session*.
 
 ---
 

@@ -30,6 +30,41 @@ export function startGoogleLogin(): void {
 }
 
 /**
+ * Send the browser to the login screen, unless we're already there (avoids a
+ * redirect loop when the login page itself makes an API call). Used both by
+ * explicit sign-out and by the API client when the backend rejects our token.
+ */
+export function redirectToLogin(): void {
+  if (typeof window === "undefined") return;
+  if (window.location.pathname === "/login") return;
+  window.location.href = "/login";
+}
+
+/** Drop the session and return to the login screen. */
+export function logout(): void {
+  clearToken();
+  redirectToLogin();
+}
+
+/**
+ * Best-effort read of the `email` claim from the stored JWT *without verifying
+ * it* — only for instantly labelling the UI before `/auth/me` resolves. Never
+ * trust this for anything security-sensitive. Returns null if absent/malformed.
+ */
+export function decodeTokenEmail(token: string): string | null {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const json = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
+    const claims = JSON.parse(json) as { email?: unknown };
+    return typeof claims.email === "string" ? claims.email : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * If the backend redirected us back with `#token=…`, store it and strip it
  * from the visible URL. Returns true when a token was consumed.
  */

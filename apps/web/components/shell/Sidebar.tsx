@@ -1,11 +1,10 @@
 "use client";
 
 import { useRouter, usePathname } from "next/navigation";
-import { Avatar } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
-import { PARTICIPANTS } from "@/lib/mock-data";
 import { NAV } from "@/lib/nav";
 import { useActiveProject } from "./ActiveProjectProvider";
+import { UserMenu } from "./UserMenu";
 
 const HOME_HREF = "/";
 
@@ -22,7 +21,6 @@ export function Sidebar({ onSwitchProject }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname() ?? HOME_HREF;
   const { activeProject } = useActiveProject();
-  const alice = PARTICIPANTS.alice;
 
   const goHome = () => router.push(HOME_HREF);
 
@@ -103,10 +101,7 @@ export function Sidebar({ onSwitchProject }: SidebarProps) {
       </nav>
 
       <div className="sidebar-footer">
-        <div className="user-chip">
-          <Avatar participant={alice} />
-          <div className="user-name">{alice.name}</div>
-        </div>
+        <UserMenu />
       </div>
     </aside>
   );

@@ -135,8 +135,32 @@ body.dark .nav-item.active { background: var(--brand-100); color: var(--brand-50
   padding: 12px 8px; border-top: 1px solid var(--line);
   display: flex; align-items: center; gap: 10px;
 }
-.sidebar-footer .user-chip { flex: 1; display: flex; align-items: center; gap: 10px; padding: 6px; border-radius: var(--radius-sm); cursor: pointer; }
+.sidebar-footer .user-menu { position: relative; flex: 1; min-width: 0; }
+.sidebar-footer .user-chip {
+  flex: 1; width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 6px; border: 0; background: transparent; border-radius: var(--radius-sm);
+  cursor: pointer; color: var(--ink-1); font: inherit; text-align: left;
+}
 .sidebar-footer .user-chip:hover { background: var(--bg-1); }
+.sidebar-footer .user-chip .user-name { flex: 1; }
+.sidebar-footer .user-chip > svg { color: var(--ink-2); flex-shrink: 0; }
+.avatar-muted { background: var(--bg-2); color: var(--ink-2); }
+
+.user-menu-pop {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + 8px);
+  background: var(--bg-0); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  padding: 6px; z-index: 60;
+}
+.user-menu-id { padding: 6px 8px 8px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.user-menu-name { font-size: 13px; font-weight: 600; color: var(--ink-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-menu-email { font-size: 11px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-menu-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px; border: 0; background: transparent; border-radius: var(--radius-sm);
+  cursor: pointer; color: var(--ink-1); font-size: 13px; text-align: left;
+}
+.user-menu-item:hover { background: var(--bg-1); }
 .avatar {
   width: 28px; height: 28px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;

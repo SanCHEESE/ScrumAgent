@@ -24,12 +24,22 @@ test.describe("Login screen", () => {
     await expect(page.getByText("@municorn.com")).toBeVisible();
   });
 
-  test("clicking sign-in routes to home", async ({ page }) => {
+  test("clicking sign-in hands off to the backend OAuth start", async ({
+    page,
+    context,
+  }) => {
+    // The button delegates the OAuth dance to the backend, which then
+    // redirects to Google. Stub the backend entry point so the assertion
+    // doesn't depend on a live server / real Google.
+    await context.route("http://localhost:8000/auth/google/start", (route) =>
+      route.fulfill({ contentType: "text/html", body: "<!doctype html><title>oauth</title>" }),
+    );
+
     await page.goto("/login");
     await page
       .getByRole("button", { name: "Continue with Google Workspace" })
       .click();
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL("http://localhost:8000/auth/google/start");
   });
 
   test("does not render the AppShell (no live bar)", async ({ page }) => {

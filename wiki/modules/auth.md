@@ -5,7 +5,7 @@ path: "backend/app/routers/auth.py"
 language: python
 status: active
 created: 2026-06-01
-updated: 2026-06-01
+updated: 2026-06-04
 depends_on: []
 used_by: []
 tags: [module, auth, oauth, jwt]
@@ -38,6 +38,14 @@ JWT used as a bearer token on every protected route. Implements
 - **Identity from the userinfo endpoint, not local id_token verification** — the token came straight from Google's token endpoint over TLS in exchange for our client secret, so it's already trusted, and this keeps deps lean (no `google-auth`; just `httpx`, already present).
 - **Token delivery via URL fragment** (`/login#token=…`), not a cross-origin cookie — dev runs `:3000` (frontend) and `:8000` (backend) on http, where `Secure`/`SameSite=None` cookies are painful. Frontend reads the fragment, stores it in `localStorage` (`kabanchik.token`), and strips it from the URL (`apps/web/lib/auth.ts`).
 - **Schema bootstrap** — `main.py` lifespan calls `Base.metadata.create_all` (no Alembic yet). Idempotent; revisit with migrations once 67j lands.
+
+## Frontend session (ScrumAgent-9pf)
+
+The browser holds the JWT in `localStorage["kabanchik.token"]` (`apps/web/lib/auth.ts`).
+
+- **Identity UI** — the sidebar-footer chip is `components/shell/UserMenu.tsx` (replaces the old hard-coded mock `alice`). With a token it labels instantly from the JWT `email` claim (decoded client-side, unverified — display only), then refines to the full name via `/auth/me`; an initials avatar with a deterministic colour stands in for the (absent) profile photo. Clicking opens a small upward popover with name/email + **Sign out** (`logout()` = clear token → `/login`). With no token it renders a **Sign in** affordance routing to `/login`.
+- **Graceful session expiry** — the API client (`apps/web/lib/api.ts`) treats *any* 401 as "our bearer is missing/expired/invalid": it clears the token and redirects to `/login` instead of letting callers surface a dead "Invalid or expired token". This is what fixed that error appearing on the Projects page for users whose earlier login had expired. `UserMenu` calls `/auth/me` on mount, so an expired session is bounced to login on app load, not just when Projects is opened.
+- **Tests** — `apps/web/tests/e2e/auth.spec.ts` (real-name display, sign out → `/login` + token cleared, unauth Sign in, expired-token-on-Projects → `/login` with no error). `login.spec.ts` asserts the sign-in button hands off to the backend OAuth start.
 
 ## Tests
 

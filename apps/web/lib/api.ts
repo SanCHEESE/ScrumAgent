@@ -5,7 +5,7 @@
 // can show `detail`. Used by the Add Project wizard and the projects list; the
 // rest of the app still reads mock data until ScrumAgent-r0k migrates it.
 
-import { API_BASE, getToken } from "./auth";
+import { API_BASE, clearToken, getToken, redirectToLogin } from "./auth";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -29,6 +29,13 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
   const body: unknown = text ? JSON.parse(text) : null;
 
   if (!resp.ok) {
+    // A 401 means our bearer token is missing/expired/invalid — there's no
+    // recovery short of re-authenticating, so drop it and bounce to login
+    // rather than letting callers render a dead "Invalid or expired token".
+    if (resp.status === 401) {
+      clearToken();
+      redirectToLogin();
+    }
     const detail =
       body && typeof body === "object" && "detail" in body
         ? String((body as Record<string, unknown>).detail)

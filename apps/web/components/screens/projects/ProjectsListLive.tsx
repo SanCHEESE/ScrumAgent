@@ -34,11 +34,13 @@ export function ProjectsListLive(): JSX.Element {
         if (active) setProjects(rows.map(toView));
       })
       .catch((e) => {
-        if (active) {
-          setError(
-            e instanceof ApiError ? e.message : "Could not load projects.",
-          );
-        }
+        if (!active) return;
+        // 401 → the API client is already redirecting to /login; don't flash a
+        // dead "Invalid or expired token" on the way out.
+        if (e instanceof ApiError && e.status === 401) return;
+        setError(
+          e instanceof ApiError ? e.message : "Could not load projects.",
+        );
       });
     return () => {
       active = false;

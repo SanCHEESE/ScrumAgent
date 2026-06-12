@@ -8,6 +8,7 @@ from app.models.integration import Integration
 from app.models.project import (
     PendingOAuth,
     Project,
+    ProjectAgentSettings,
     ProjectCredential,
     ProjectMember,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "TraceStep",
     "Integration",
     "Project",
+    "ProjectAgentSettings",
     "ProjectMember",
     "ProjectCredential",
     "PendingOAuth",

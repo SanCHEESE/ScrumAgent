@@ -37,11 +37,12 @@ from app.integrations import IntegrationValidators, parse_notion_page_id
 from app.models import (
     PendingOAuth,
     Project,
+    ProjectAgentSettings,
     ProjectCredential,
     ProjectMember,
     User,
 )
-from app.models.types import ProjectRole, uuid_str
+from app.models.types import ProjectRole, ResponseStyle, uuid_str
 from app.oauth import AGENT_SCOPES, GoogleOAuthClient
 from app.security import sign_oauth_state, verify_oauth_state
 
@@ -409,6 +410,58 @@ def _event_to_meeting(event: dict) -> CalendarMeetingOut:
         html_link=event.get("htmlLink"),
         status=event.get("status"),
     )
+
+
+class AgentSettingsModel(BaseModel):
+    """Agent behavior knobs — also the PUT payload (full replace, no partials)."""
+
+    auto_join_meetings: bool = True
+    record_audio: bool = True
+    capture_screenshots: bool = False
+    confidence_threshold: int = Field(70, ge=0, le=100)
+    auto_apply_high_confidence: bool = True
+    response_style: ResponseStyle = ResponseStyle.balanced
+    context_window_meetings: int = Field(10, ge=1, le=100)
+
+
+def _get_member_project(db: Session, project_id: str, user: User) -> Project:
+    project = db.get(Project, project_id)
+    if project is None or not _is_member(db, project_id, user.id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
+    return project
+
+
+@router.get("/{project_id}/settings/agent", response_model=AgentSettingsModel)
+def get_agent_settings(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AgentSettingsModel:
+    """Per-project agent behavior; defaults when never saved (member-only)."""
+    project = _get_member_project(db, project_id, user)
+    row = project.agent_settings
+    if row is None:
+        return AgentSettingsModel()
+    return AgentSettingsModel.model_validate(row, from_attributes=True)
+
+
+@router.put("/{project_id}/settings/agent", response_model=AgentSettingsModel)
+def put_agent_settings(
+    project_id: str,
+    req: AgentSettingsModel,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AgentSettingsModel:
+    """Upsert the project's agent behavior settings (member-only)."""
+    project = _get_member_project(db, project_id, user)
+    row = project.agent_settings
+    if row is None:
+        row = ProjectAgentSettings(project_id=project.id)
+        db.add(row)
+    for field, value in req.model_dump().items():
+        setattr(row, field, value)
+    db.commit()
+    return req
 
 
 @router.get("/{project_id}", response_model=ProjectOut)

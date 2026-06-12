@@ -16,6 +16,7 @@ from sqlalchemy import (
     DateTime,
     Enum as SAEnum,
     ForeignKey,
+    Integer,
     String,
     func,
 )
@@ -25,6 +26,7 @@ from app.database import Base
 from app.models.types import (
     EncryptedString,
     ProjectRole,
+    ResponseStyle,
     TimestampMixin,
     UUIDPKMixin,
 )
@@ -65,6 +67,9 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     credential: Mapped["ProjectCredential | None"] = relationship(
         back_populates="project", uselist=False, cascade="all, delete-orphan"
     )
+    agent_settings: Mapped["ProjectAgentSettings | None"] = relationship(
+        back_populates="project", uselist=False, cascade="all, delete-orphan"
+    )
 
 
 class ProjectMember(TimestampMixin, Base):
@@ -103,6 +108,50 @@ class ProjectCredential(TimestampMixin, Base):
     )
 
     project: Mapped["Project"] = relationship(back_populates="credential")
+
+
+class ProjectAgentSettings(TimestampMixin, Base):
+    """Per-project agent behavior knobs (1:1 with Project, row created lazily).
+
+    No row means "all defaults" — GET serves the column defaults without
+    writing, the first PUT materializes the row.
+    """
+
+    __tablename__ = "project_agent_settings"
+
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id"), primary_key=True
+    )
+    auto_join_meetings: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
+    record_audio: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    capture_screenshots: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    confidence_threshold: Mapped[int] = mapped_column(
+        Integer, default=70, nullable=False
+    )
+    auto_apply_high_confidence: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
+    response_style: Mapped[ResponseStyle] = mapped_column(
+        SAEnum(ResponseStyle, native_enum=False),
+        default=ResponseStyle.balanced,
+        nullable=False,
+    )
+    context_window_meetings: Mapped[int] = mapped_column(
+        Integer, default=10, nullable=False
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    project: Mapped["Project"] = relationship(back_populates="agent_settings")
 
 
 class PendingOAuth(UUIDPKMixin, TimestampMixin, Base):

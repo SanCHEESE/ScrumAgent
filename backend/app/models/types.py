@@ -83,3 +83,9 @@ class RunStatus(str, enum.Enum):
 class ProjectRole(str, enum.Enum):
     member = "member"
     admin = "admin"
+
+
+class ResponseStyle(str, enum.Enum):
+    concise = "concise"
+    balanced = "balanced"
+    detailed = "detailed"

@@ -10,6 +10,21 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-12 — Real per-project Agent behavior settings (ScrumAgent-7qy)
+
+`/settings → Agent behavior` is no longer local mock state. New
+`project_agent_settings` table (1:1 with Project, lazily created — no row means
+defaults) holding auto-join / record-audio / capture-screenshots /
+confidence-threshold / auto-apply / response-style (enum concise|balanced|detailed)
+/ context-window-meetings. New endpoints `GET/PUT
+/projects/{id}/settings/agent` (member-only 404 otherwise, PUT = validated full
+replace upsert, GET serves defaults when unset). Frontend
+`AgentBehaviorSection` now has a project picker, loads settings per project, and
+debounce-autosaves every change (600 ms) with a Saving…/Saved/error indicator.
+Tests: 14 new pytest (99 green total), settings e2e rewritten with API stubs + 3
+new sync tests (54 e2e green), tsc clean, verified live (toggle + select persisted
+to dev.db across reloads).
+
 ## 2026-06-12 — Live meetings/pending counts on project cards (ScrumAgent-0dx)
 
 `/projects` tiles no longer hardcode `meetings: 0, pending: 0`. `ProjectsListLive`

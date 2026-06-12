@@ -136,6 +136,18 @@ export interface ProjectOut {
   created_at: string;
 }
 
+export type ResponseStyle = "concise" | "balanced" | "detailed";
+
+export interface AgentSettings {
+  auto_join_meetings: boolean;
+  record_audio: boolean;
+  capture_screenshots: boolean;
+  confidence_threshold: number;
+  auto_apply_high_confidence: boolean;
+  response_style: ResponseStyle;
+  context_window_meetings: number;
+}
+
 export const api = {
   me: () => apiFetch<MeResponse>("/auth/me"),
   listUsers: () => apiFetch<DirectoryUser[]>("/users/directory"),
@@ -166,6 +178,15 @@ export const api = {
   listProjectMeetings: (projectId: string) =>
     apiFetch<CalendarMeeting[]>(
       `/projects/${encodeURIComponent(projectId)}/meetings`,
+    ),
+  getAgentSettings: (projectId: string) =>
+    apiFetch<AgentSettings>(
+      `/projects/${encodeURIComponent(projectId)}/settings/agent`,
+    ),
+  putAgentSettings: (projectId: string, settings: AgentSettings) =>
+    apiFetch<AgentSettings>(
+      `/projects/${encodeURIComponent(projectId)}/settings/agent`,
+      { method: "PUT", body: JSON.stringify(settings) },
     ),
 };
 

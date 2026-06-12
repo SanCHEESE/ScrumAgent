@@ -8,7 +8,7 @@ tags: [meta, hot-cache]
 # Recent Context
 
 ## Last Updated
-2026-06-12. **OAuth audit fixes (`ScrumAgent-imt`) + live calendar meetings (`ScrumAgent-m5x`).** Both Google OAuth flows hardened end-to-end, and `/meetings` now shows *real* Google Calendar events from each project's agent account instead of mocks. Backend 85 pytest green, 47 Playwright e2e green, tsc clean, verified live in the browser (incl. a real `invalid_grant` → "reconnect" alert round-trip against Google).
+2026-06-12. **Real per-project Agent behavior settings (`ScrumAgent-7qy`).** `/settings → Agent behavior` is now a live tab: new `project_agent_settings` table + `GET/PUT /projects/{id}/settings/agent` (member-only; defaults when unset; PUT = validated full-replace upsert), frontend project picker + debounced autosave (Saving…/Saved indicator). 99 pytest green, 54 Playwright e2e green (settings spec rewritten with API stubs), tsc clean, verified live against dev.db. Earlier same day: OAuth audit fixes (`imt`), live calendar meetings (`m5x`), live project-card counts (`0dx`).
 
 ## Key Recent Facts
 - Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker Compose for Municorn (`@municorn.com`); second target = single GCE VM.
@@ -17,6 +17,10 @@ tags: [meta, hot-cache]
 - Canonical plan: [[sources/mvp-v2-plan]]. Tracking: `bd`. TDD mandatory.
 
 ## What just shipped
+
+**Per-project agent settings** ([[modules/project-provisioning]]):
+- `ProjectAgentSettings` (1:1 with Project, lazily created): auto_join_meetings, record_audio, capture_screenshots, confidence_threshold (0–100), auto_apply_high_confidence, response_style (`concise|balanced|detailed`), context_window_meetings (1–100).
+- `GET/PUT /projects/{id}/settings/agent`; agent runtime should read these knobs from here once slices land.
 
 **OAuth fixes** ([[modules/auth]], [[modules/project-provisioning]]):
 - Login callback: consent-cancel / exchange-failure / wrong-domain / unverified-email now 302 to `/login?error=<code>` (login page shows an alert) — was a raw 422/403 JSON dead-end. `email_verified` required in both callbacks.

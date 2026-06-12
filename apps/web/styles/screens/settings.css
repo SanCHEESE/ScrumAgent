@@ -292,6 +292,25 @@ body.dark .settings-integration-icon.slack {
   gap: 8px;
 }
 
+/* Card block = row + optional expanded configure form */
+.integration-card-block {
+  border-bottom: 1px solid var(--line);
+}
+.integration-card-block:last-child {
+  border-bottom: 0;
+}
+.integration-card-block .integration-row {
+  border-bottom: 0;
+}
+.integration-form {
+  margin: 0 0 16px 54px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-1);
+  gap: 12px;
+}
+
 /* link-btn (used in API key reveal/copy) */
 .link-btn {
   margin-left: 0;

@@ -464,6 +464,225 @@ def put_agent_settings(
     return req
 
 
+class GoogleIntegrationStatus(BaseModel):
+    connected: bool
+    agent_email: str
+
+
+class JiraIntegrationStatus(BaseModel):
+    configured: bool
+    site_url: str | None
+    user_email: str | None
+    project_key: str | None
+
+
+class NotionIntegrationStatus(BaseModel):
+    configured: bool
+    section_url: str | None
+    page_id: str | None
+
+
+class IntegrationsStatusOut(BaseModel):
+    """Per-project integration state for the Settings UI. Never carries secrets."""
+
+    google: GoogleIntegrationStatus
+    jira: JiraIntegrationStatus
+    notion: NotionIntegrationStatus
+
+
+class GoogleReconnectRequest(BaseModel):
+    google_auth_session_id: str
+
+
+def _integrations_status(project: Project) -> IntegrationsStatusOut:
+    cred = project.credential
+    return IntegrationsStatusOut(
+        google=GoogleIntegrationStatus(
+            connected=project.google_connected
+            and bool(cred and cred.google_refresh_token),
+            agent_email=project.agent_email,
+        ),
+        jira=JiraIntegrationStatus(
+            configured=bool(project.jira_site_url and cred and cred.jira_api_token),
+            site_url=project.jira_site_url,
+            user_email=project.jira_user_email,
+            project_key=project.jira_project_key,
+        ),
+        notion=NotionIntegrationStatus(
+            configured=bool(cred and cred.notion_token),
+            section_url=project.notion_section_url,
+            page_id=project.notion_page_id,
+        ),
+    )
+
+
+def _ensure_credential(project: Project, db: Session) -> ProjectCredential:
+    if project.credential is None:
+        project.credential = ProjectCredential(project_id=project.id)
+        db.add(project.credential)
+    return project.credential
+
+
+@router.get("/{project_id}/integrations", response_model=IntegrationsStatusOut)
+def get_integrations(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> IntegrationsStatusOut:
+    """Real per-project integration state (member-only)."""
+    project = _get_member_project(db, project_id, user)
+    return _integrations_status(project)
+
+
+@router.put("/{project_id}/integrations/jira", response_model=IntegrationsStatusOut)
+async def put_jira_integration(
+    project_id: str,
+    req: JiraConfig,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    validators: IntegrationValidators = Depends(get_integration_validators),
+) -> IntegrationsStatusOut:
+    """Replace the project's Jira credentials — live-validated before saving."""
+    project = _get_member_project(db, project_id, user)
+    result = await validators.validate_jira(
+        site_url=req.site_url, user_email=req.user_email, api_token=req.api_token
+    )
+    if not result.ok:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"Jira credentials did not validate: {result.error}",
+        )
+    project.jira_site_url = req.site_url
+    project.jira_user_email = req.user_email
+    project.jira_project_key = req.project_key
+    _ensure_credential(project, db).jira_api_token = req.api_token
+    db.commit()
+    return _integrations_status(project)
+
+
+@router.put("/{project_id}/integrations/notion", response_model=IntegrationsStatusOut)
+async def put_notion_integration(
+    project_id: str,
+    req: NotionConfig,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    validators: IntegrationValidators = Depends(get_integration_validators),
+) -> IntegrationsStatusOut:
+    """Replace the project's Notion credentials — live-validated before saving."""
+    project = _get_member_project(db, project_id, user)
+    result = await validators.validate_notion(token=req.token)
+    if not result.ok:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"Notion token did not validate: {result.error}",
+        )
+    project.notion_section_url = req.section_url
+    project.notion_page_id = parse_notion_page_id(req.section_url)
+    _ensure_credential(project, db).notion_token = req.token
+    db.commit()
+    return _integrations_status(project)
+
+
+@router.put("/{project_id}/integrations/google", response_model=IntegrationsStatusOut)
+def put_google_integration(
+    project_id: str,
+    req: GoogleReconnectRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> IntegrationsStatusOut:
+    """Reconnect the agent's Google account from a staged PendingOAuth grant."""
+    project = _get_member_project(db, project_id, user)
+    pending = db.get(PendingOAuth, req.google_auth_session_id)
+    if (
+        pending is None
+        or pending.user_id != user.id
+        or pending.provider != GOOGLE_PROVIDER
+        or not pending.refresh_token
+    ):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Valid Google authorization is required"
+        )
+    project.agent_email = pending.account_email
+    project.google_connected = True
+    _ensure_credential(project, db).google_refresh_token = pending.refresh_token
+    db.delete(pending)  # one-shot grant consumed
+    db.commit()
+    return _integrations_status(project)
+
+
+@router.post("/{project_id}/integrations/{provider}/test")
+async def test_stored_integration(
+    project_id: str,
+    provider: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    validators: IntegrationValidators = Depends(get_integration_validators),
+    calendar: GoogleCalendarClient = Depends(get_google_calendar),
+) -> dict:
+    """Probe the *stored* credentials of one provider live (member-only).
+
+    409 when that provider was never configured; otherwise always 200 with an
+    ``{ok, detail, error}`` verdict.
+    """
+    project = _get_member_project(db, project_id, user)
+    cred = project.credential
+
+    if provider == "jira":
+        if not (project.jira_site_url and cred and cred.jira_api_token):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "Jira is not configured for this project"
+            )
+        result = await validators.validate_jira(
+            site_url=project.jira_site_url,
+            user_email=project.jira_user_email or "",
+            api_token=cred.jira_api_token,
+        )
+        return {"ok": result.ok, "detail": result.detail, "error": result.error}
+
+    if provider == "notion":
+        if not (cred and cred.notion_token):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "Notion is not configured for this project"
+            )
+        result = await validators.validate_notion(token=cred.notion_token)
+        return {"ok": result.ok, "detail": result.detail, "error": result.error}
+
+    if provider == "google":
+        if not (cred and cred.google_refresh_token):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "Project has no Google authorization — reconnect the agent account",
+            )
+        now = datetime.now(timezone.utc)
+        try:
+            await calendar.list_events(
+                cred.google_refresh_token,
+                time_min=now,
+                time_max=now + timedelta(days=1),
+                max_results=1,
+            )
+        except GoogleAuthRevokedError:
+            project.google_connected = False
+            db.commit()
+            return {
+                "ok": False,
+                "detail": None,
+                "error": "Google authorization expired or was revoked",
+            }
+        except GoogleCalendarError:
+            return {
+                "ok": False,
+                "detail": None,
+                "error": "Could not reach Google Calendar",
+            }
+        if not project.google_connected:
+            project.google_connected = True  # probe proves the grant works again
+            db.commit()
+        return {"ok": True, "detail": {"agent_email": project.agent_email}, "error": None}
+
+    raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown integration provider")
+
+
 @router.get("/{project_id}", response_model=ProjectOut)
 def get_project(
     project_id: str,

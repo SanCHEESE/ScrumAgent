@@ -10,6 +10,23 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-12 — Live /settings Integrations tab (ScrumAgent-d9q)
+
+`/settings → Integrations` is no longer a hardcoded mock (fake OpenAI/Slack cards,
+fake Jira sites). New member-only endpoints: `GET /projects/{id}/integrations`
+(real google/jira/notion status, never secrets), `PUT …/integrations/jira|notion`
+(live-validated then saved — 422 leaves stored creds untouched),
+`PUT …/integrations/google` (reconnect: consumes a staged `PendingOAuth`, updates
+agent_email + refresh token — finally a recovery path for the meetings 409),
+`POST …/integrations/{provider}/test` (probes the *stored* creds; google = 1-event
+calendar probe that flips `google_connected` on revoked/restored grants; 409 when
+unconfigured). Frontend `IntegrationsSection` rewritten: project picker, real
+badges, inline Jira/Notion configure forms with "Validate & save", per-card Test
+buttons, Google Reconnect popup (same handshake as the wizard's StepGoogle).
+OpenAI/Slack mocks dropped with an honest note. Tests: 23 new pytest (122 green),
+4 new e2e (58 green), tsc clean; verified live against dev.db — stored Jira and
+Google probes both returned "Connection works" against the real services.
+
 ## 2026-06-12 — Real per-project Agent behavior settings (ScrumAgent-7qy)
 
 `/settings → Agent behavior` is no longer local mock state. New

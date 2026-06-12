@@ -77,8 +77,26 @@ integrations are otherwise skippable. The Notion section link is parsed to a pag
 | `GET /projects` | projects the caller is a member of (owner included) |
 | `GET /projects/{id}` | detail; `404` for non-members |
 | `GET /users/directory` | selectable members |
+| `GET /projects/{id}/integrations` | real per-project status (member-only, never secrets) |
+| `PUT /projects/{id}/integrations/jira` | replace Jira creds — live-validated, `422` on failure |
+| `PUT /projects/{id}/integrations/notion` | replace Notion creds — live-validated, `422` on failure |
+| `PUT /projects/{id}/integrations/google` | reconnect agent account from a `PendingOAuth` grant |
+| `POST /projects/{id}/integrations/{provider}/test` | probe the **stored** creds (`google`/`jira`/`notion`); `409` if unconfigured |
 
 All are protected by `get_current_user` except the callback (identity rides in the signed `state`).
+
+## Settings → Integrations (post-provisioning, ScrumAgent-d9q, 2026-06-12)
+
+`/settings → Integrations` is live (was a hardcoded mock): project picker, real
+Connected/Not-connected badges from `GET /{id}/integrations`, inline configure forms
+(Jira 4-field / Notion token+URL, "Validate & save" = the PUT), and per-card **Test**
+buttons probing the *stored* credentials. The Google **Test** runs a 1-event calendar
+probe; `invalid_grant` flips `google_connected=false` (and a later successful probe
+flips it back). **Reconnect** reuses the wizard popup handshake, then
+`PUT /{id}/integrations/google` consumes the staged `PendingOAuth` — closing the loop
+with the meetings endpoint's 409 "reconnect the agent account". Status responses carry
+booleans + non-secret fields only. OpenAI/Slack mock cards were dropped (OpenAI key is
+server-side config; Slack doesn't exist yet).
 
 ## Related
 

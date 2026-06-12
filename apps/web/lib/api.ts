@@ -148,6 +148,32 @@ export interface AgentSettings {
   context_window_meetings: number;
 }
 
+export interface GoogleIntegrationStatus {
+  connected: boolean;
+  agent_email: string;
+}
+
+export interface JiraIntegrationStatus {
+  configured: boolean;
+  site_url: string | null;
+  user_email: string | null;
+  project_key: string | null;
+}
+
+export interface NotionIntegrationStatus {
+  configured: boolean;
+  section_url: string | null;
+  page_id: string | null;
+}
+
+export interface IntegrationsStatus {
+  google: GoogleIntegrationStatus;
+  jira: JiraIntegrationStatus;
+  notion: NotionIntegrationStatus;
+}
+
+export type IntegrationProvider = "google" | "jira" | "notion";
+
 export const api = {
   me: () => apiFetch<MeResponse>("/auth/me"),
   listUsers: () => apiFetch<DirectoryUser[]>("/users/directory"),
@@ -187,6 +213,33 @@ export const api = {
     apiFetch<AgentSettings>(
       `/projects/${encodeURIComponent(projectId)}/settings/agent`,
       { method: "PUT", body: JSON.stringify(settings) },
+    ),
+  getIntegrations: (projectId: string) =>
+    apiFetch<IntegrationsStatus>(
+      `/projects/${encodeURIComponent(projectId)}/integrations`,
+    ),
+  putJiraIntegration: (projectId: string, p: JiraConfigPayload) =>
+    apiFetch<IntegrationsStatus>(
+      `/projects/${encodeURIComponent(projectId)}/integrations/jira`,
+      { method: "PUT", body: JSON.stringify(p) },
+    ),
+  putNotionIntegration: (projectId: string, p: NotionConfigPayload) =>
+    apiFetch<IntegrationsStatus>(
+      `/projects/${encodeURIComponent(projectId)}/integrations/notion`,
+      { method: "PUT", body: JSON.stringify(p) },
+    ),
+  reconnectGoogle: (projectId: string, authSessionId: string) =>
+    apiFetch<IntegrationsStatus>(
+      `/projects/${encodeURIComponent(projectId)}/integrations/google`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ google_auth_session_id: authSessionId }),
+      },
+    ),
+  testStoredIntegration: (projectId: string, provider: IntegrationProvider) =>
+    apiFetch<TestResult>(
+      `/projects/${encodeURIComponent(projectId)}/integrations/${provider}/test`,
+      { method: "POST" },
     ),
 };
 

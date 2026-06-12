@@ -142,6 +142,155 @@ test.describe("Settings hub", () => {
   });
 });
 
+const INTEGRATIONS_STATUS = {
+  google: { connected: true, agent_email: "agent@municorn.com" },
+  jira: {
+    configured: true,
+    site_url: "https://municorn.atlassian.net",
+    user_email: "agent@municorn.com",
+    project_key: "PLAT",
+  },
+  notion: { configured: false, section_url: null, page_id: null },
+};
+
+test.describe("Integrations (per-project, live)", () => {
+  test("shows the real per-project integration state", async ({ page }) => {
+    await mockSettingsApi(page, {});
+    await page.context().route(`${API}/projects/*/integrations`, (route) =>
+      route.fulfill({ json: INTEGRATIONS_STATUS }),
+    );
+    await page.goto("/settings");
+    await page
+      .locator(".settings-nav-item")
+      .filter({ hasText: "Integrations" })
+      .click();
+
+    const google = page
+      .locator(".integration-card-block")
+      .filter({ hasText: "Google Workspace" });
+    await expect(google).toContainText("Connected");
+    await expect(google).toContainText("agent@municorn.com");
+
+    const jira = page
+      .locator(".integration-card-block")
+      .filter({ hasText: "Jira" });
+    await expect(jira).toContainText("Connected");
+    await expect(jira).toContainText("municorn.atlassian.net");
+    await expect(jira).toContainText("Project · PLAT");
+
+    const notion = page
+      .locator(".integration-card-block")
+      .filter({ hasText: "Notion" });
+    await expect(notion).toContainText("Not connected");
+    await expect(notion.getByRole("button", { name: "Connect" })).toBeVisible();
+  });
+
+  test("Test probes the stored credentials and shows the verdict", async ({
+    page,
+  }) => {
+    await mockSettingsApi(page, {});
+    await page.context().route(`${API}/projects/*/integrations`, (route) =>
+      route.fulfill({ json: INTEGRATIONS_STATUS }),
+    );
+    await page
+      .context()
+      .route(`${API}/projects/*/integrations/jira/test`, (route) =>
+        route.fulfill({ json: { ok: false, detail: null, error: "HTTP 401" } }),
+      );
+    await page.goto("/settings");
+    await page
+      .locator(".settings-nav-item")
+      .filter({ hasText: "Integrations" })
+      .click();
+
+    const jira = page
+      .locator(".integration-card-block")
+      .filter({ hasText: "Jira" });
+    await jira.getByRole("button", { name: "Test" }).click();
+    await expect(jira.getByRole("alert")).toContainText("HTTP 401");
+  });
+
+  test("connecting Notion validates and saves via PUT", async ({ page }) => {
+    await mockSettingsApi(page, {});
+    await page.context().route(`${API}/projects/*/integrations`, (route) =>
+      route.fulfill({ json: INTEGRATIONS_STATUS }),
+    );
+    let putBody: Record<string, unknown> | null = null;
+    await page
+      .context()
+      .route(`${API}/projects/*/integrations/notion`, async (route) => {
+        putBody = route.request().postDataJSON();
+        await route.fulfill({
+          json: {
+            ...INTEGRATIONS_STATUS,
+            notion: {
+              configured: true,
+              section_url: "https://www.notion.so/m/Docs-abc",
+              page_id: "abc",
+            },
+          },
+        });
+      });
+    await page.goto("/settings");
+    await page
+      .locator(".settings-nav-item")
+      .filter({ hasText: "Integrations" })
+      .click();
+
+    const notion = page
+      .locator(".integration-card-block")
+      .filter({ hasText: "Notion" });
+    await notion.getByRole("button", { name: "Connect" }).click();
+    await page.getByLabel("Internal integration token").fill("ntn_secret");
+    await page.getByLabel("Section URL").fill("https://www.notion.so/m/Docs-abc");
+    await page.getByRole("button", { name: "Validate & save" }).click();
+
+    await expect(notion).toContainText("Connected");
+    await expect(notion).toContainText("notion.so/m/Docs-abc");
+    expect(putBody).toEqual({
+      token: "ntn_secret",
+      section_url: "https://www.notion.so/m/Docs-abc",
+    });
+  });
+
+  test("invalid Jira credentials surface the backend error", async ({
+    page,
+  }) => {
+    await mockSettingsApi(page, {});
+    await page.context().route(`${API}/projects/*/integrations`, (route) =>
+      route.fulfill({ json: INTEGRATIONS_STATUS }),
+    );
+    await page
+      .context()
+      .route(`${API}/projects/*/integrations/jira`, (route) =>
+        route.fulfill({
+          status: 422,
+          json: { detail: "Jira credentials did not validate: HTTP 401" },
+        }),
+      );
+    await page.goto("/settings");
+    await page
+      .locator(".settings-nav-item")
+      .filter({ hasText: "Integrations" })
+      .click();
+
+    const jira = page
+      .locator(".integration-card-block")
+      .filter({ hasText: "Jira" });
+    await jira.getByRole("button", { name: "Configure" }).click();
+    // Site + email are prefilled from the live status; only the token is new.
+    await expect(page.getByLabel("Atlassian site URL")).toHaveValue(
+      "https://municorn.atlassian.net",
+    );
+    await page.getByLabel("API token").fill("bad-token");
+    await page.getByRole("button", { name: "Validate & save" }).click();
+
+    await expect(
+      page.locator(".integration-form").getByRole("alert"),
+    ).toContainText("Jira credentials did not validate");
+  });
+});
+
 test.describe("Agent behavior (per-project, synced)", () => {
   test("loads the selected project's settings from the API", async ({
     page,

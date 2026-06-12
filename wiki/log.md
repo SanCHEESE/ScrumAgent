@@ -10,6 +10,18 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-12 — Live meetings/pending counts on project cards (ScrumAgent-0dx)
+
+`/projects` tiles no longer hardcode `meetings: 0, pending: 0`. `ProjectsListLive`
+now fetches each project's agent calendar (`GET /projects/{id}/meetings`, same
+endpoint the `/meetings` page uses) after the project list renders: *meetings* =
+events in the default window, *pending* = the upcoming subset. Per-project calendar
+failures (revoked grant, upstream error) leave that card's counts at zero without
+breaking the grid. Covered by two new Playwright tests in `projects.spec.ts`
+(counts from a mocked calendar; 409 degrades gracefully). 51 e2e green, tsc clean,
+verified live (eSIM card: 20 meetings / 14 pending). `last sync` still shows "—" —
+nothing is persisted/synced yet.
+
 ## 2026-06-12 — OAuth audit fixes + live calendar meetings (ScrumAgent-imt, ScrumAgent-m5x)
 
 Audited both Google OAuth flows and fixed: consent-cancel no longer 422s (login

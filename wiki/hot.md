@@ -28,6 +28,7 @@ tags: [meta, hot-cache]
 - New `backend/app/google_calendar.py` — `GoogleCalendarClient.list_events(refresh_token, …)` (refresh→access token, primary-calendar `events.list`, `singleEvents`); `GoogleAuthRevokedError` on `invalid_grant`. Injectable via `deps.get_google_calendar`.
 - `GET /projects/{id}/meetings?days_back&days_forward` (member-only; 409 grant missing/revoked → "reconnect the agent account", 502 upstream) → normalized events (all-day, attendees, Meet link, `htmlLink`).
 - `/meetings` page rewritten: merges live events across all user projects; All/Upcoming/Past tabs; search; attendee initials avatars; Scheduled/Past pills; rows open the event in Google Calendar; per-project failures = inline alerts; no projects → "Create a project" hint. Detail page `/meetings/[id]` still mock (artifacts pipeline pending). Nothing persisted yet — endpoint proxies live.
+- `/projects` cards now show real counts too (`ScrumAgent-0dx`): `ProjectsListLive` fetches each project's calendar after listing — meetings = events in window, pending = upcoming; failed fetch leaves zeros. `last sync` still "—" (nothing synced/persisted).
 
 ## Local dev environment
 - Backend = local uvicorn (`backend/.venv`), `DATABASE_URL=sqlite:////…/backend/.local/dev.db`, frontend dev on `:3000`. Mint dev JWT: `DATABASE_URL=… PYTHONPATH=. .venv/bin/python .local/_mint_dev_token.py`.

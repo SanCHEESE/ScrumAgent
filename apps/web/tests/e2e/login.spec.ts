@@ -42,6 +42,18 @@ test.describe("Login screen", () => {
     await expect(page).toHaveURL("http://localhost:8000/auth/google/start");
   });
 
+  test("shows a friendly message when the OAuth round-trip failed", async ({
+    page,
+  }) => {
+    // The backend callback bounces consent-cancel / wrong-domain back as
+    // /login?error=<code> — rendered as an alert, then stripped from the URL.
+    await page.goto("/login?error=domain_not_allowed");
+    await expect(page.locator(".login-error")).toContainText(
+      "Only @municorn.com accounts",
+    );
+    await expect(page).toHaveURL(/\/login$/);
+  });
+
   test("does not render the AppShell (no live bar)", async ({ page }) => {
     await page.goto("/login");
     // /login uses a sibling layout that skips AppShell entirely.

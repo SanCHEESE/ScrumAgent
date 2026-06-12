@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import secrets
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -48,9 +49,10 @@ def google_start(
 
 @router.get("/google/callback")
 async def google_callback(
-    code: str,
     state: str,
     request: Request,
+    code: str | None = None,
+    error: str | None = None,
     settings: Settings = Depends(get_settings),
     oauth: GoogleOAuthClient = Depends(get_google_oauth),
     db: Session = Depends(get_db),
@@ -59,16 +61,24 @@ async def google_callback(
     if not expected or not secrets.compare_digest(expected, state):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid OAuth state")
 
-    tokens = await oauth.exchange_code(code)
-    userinfo = await oauth.fetch_userinfo(tokens["access_token"])
+    # Google redirects with ``error`` (and no ``code``) when the user cancels
+    # the consent screen — land them back on the login page, not a JSON error.
+    if error or not code:
+        return _login_error_redirect(settings, error or "missing_code")
+
+    try:
+        tokens = await oauth.exchange_code(code)
+        userinfo = await oauth.fetch_userinfo(tokens["access_token"])
+    except (httpx.HTTPError, KeyError):
+        return _login_error_redirect(settings, "exchange_failed")
 
     email = (userinfo.get("email") or "").lower()
     allowed = settings.allowed_domain.lower()
-    if userinfo.get("hd") != allowed and not email.endswith(f"@{allowed}"):
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            f"Only @{settings.allowed_domain} accounts may sign in",
-        )
+    domain_ok = userinfo.get("hd") == allowed or email.endswith(f"@{allowed}")
+    # ``email_verified`` guards against Google accounts created on an email
+    # address the holder never proved they own.
+    if not userinfo.get("email_verified", False) or not domain_ok:
+        return _login_error_redirect(settings, "domain_not_allowed")
 
     sub = userinfo["sub"]
     user = db.query(User).filter(User.google_sub == sub).one_or_none()
@@ -98,3 +108,13 @@ async def google_callback(
 @router.get("/me")
 def me(user: User = Depends(get_current_user)) -> dict:
     return {"id": user.id, "email": user.email, "name": user.name}
+
+
+def _login_error_redirect(settings: Settings, error: str) -> RedirectResponse:
+    """Send the browser back to the login screen with a displayable error code."""
+    resp = RedirectResponse(
+        f"{settings.frontend_base_url}/login?error={error}",
+        status_code=status.HTTP_302_FOUND,
+    )
+    resp.delete_cookie(STATE_COOKIE)
+    return resp

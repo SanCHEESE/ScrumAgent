@@ -28,12 +28,22 @@ async def lifespan(_app):
 
 app = FastAPI(title="Kabanchik", lifespan=lifespan)
 
+
+def _frontend_origin() -> str:
+    # Settings is the source of truth (it also reads the repo-root .env, which
+    # a bare ``os.getenv`` misses); fall back to the raw env var so a missing
+    # required secret degrades to the dev default instead of failing import.
+    try:
+        return get_settings().frontend_base_url
+    except Exception:
+        return os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
+
+
 # Frontend (different origin in dev: :3000 vs :8000) calls the API with a
-# bearer token, so it needs CORS. Read the origin directly to avoid building
-# Settings at import time.
+# bearer token, so it needs CORS.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")],
+    allow_origins=[_frontend_origin()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

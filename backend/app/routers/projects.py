@@ -10,9 +10,10 @@ creation.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import HTMLResponse
 from jose import JWTError
 from pydantic import BaseModel, Field
@@ -23,8 +24,14 @@ from app.deps import (
     get_agent_google_oauth,
     get_current_user,
     get_db,
+    get_google_calendar,
     get_integration_validators,
     get_settings,
+)
+from app.google_calendar import (
+    GoogleAuthRevokedError,
+    GoogleCalendarClient,
+    GoogleCalendarError,
 )
 from app.integrations import IntegrationValidators, parse_notion_page_id
 from app.models import (
@@ -143,27 +150,44 @@ async def google_callback(
             settings, ok=False, session_id=session_id, error=error or "missing_code"
         )
 
-    tokens = await oauth.exchange_code(code)
-    userinfo = await oauth.fetch_userinfo(tokens["access_token"])
+    # Every failure below must still render the popup page — a raised JSON
+    # error would never postMessage back, leaving the wizard stuck on Waiting.
+    try:
+        tokens = await oauth.exchange_code(code)
+        userinfo = await oauth.fetch_userinfo(tokens["access_token"])
+    except (httpx.HTTPError, KeyError):
+        return _popup_html(
+            settings, ok=False, session_id=session_id, error="exchange_failed"
+        )
+
     email = (userinfo.get("email") or "").lower()
-
-    if not email.endswith(f"@{settings.allowed_domain.lower()}"):
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            f"Agent account must be @{settings.allowed_domain}",
+    if not userinfo.get("email_verified", False) or not email.endswith(
+        f"@{settings.allowed_domain.lower()}"
+    ):
+        return _popup_html(
+            settings, ok=False, session_id=session_id, error="wrong_domain"
         )
 
-    db.add(
-        PendingOAuth(
-            id=session_id,
-            user_id=user_id,
-            provider=GOOGLE_PROVIDER,
-            account_email=email,
-            refresh_token=tokens.get("refresh_token"),
-            scopes=" ".join(AGENT_SCOPES),
+    refresh_token = tokens.get("refresh_token")
+    if not refresh_token:
+        # Without offline access the grant is useless to the agent — surface it
+        # now instead of failing project creation later with a cryptic 400.
+        return _popup_html(
+            settings, ok=False, session_id=session_id, error="no_refresh_token"
         )
-    )
-    db.commit()
+
+    if db.get(PendingOAuth, session_id) is None:  # replayed callback → idempotent
+        db.add(
+            PendingOAuth(
+                id=session_id,
+                user_id=user_id,
+                provider=GOOGLE_PROVIDER,
+                account_email=email,
+                refresh_token=refresh_token,
+                scopes=" ".join(AGENT_SCOPES),
+            )
+        )
+        db.commit()
 
     return _popup_html(settings, ok=True, session_id=session_id, email=email)
 
@@ -284,6 +308,104 @@ def list_projects(
         .all()
     )
     return [_serialize(p, db) for p in projects]
+
+
+class CalendarAttendeeOut(BaseModel):
+    email: str | None
+    display_name: str | None
+    response_status: str | None
+    organizer: bool = False
+
+
+class CalendarMeetingOut(BaseModel):
+    id: str
+    title: str | None
+    start: str | None  # RFC 3339 dateTime, or YYYY-MM-DD for all-day events
+    end: str | None
+    all_day: bool
+    organizer_email: str | None
+    attendees: list[CalendarAttendeeOut]
+    meet_link: str | None
+    html_link: str | None
+    status: str | None
+
+
+@router.get("/{project_id}/meetings", response_model=list[CalendarMeetingOut])
+async def list_project_meetings(
+    project_id: str,
+    days_back: int = Query(30, ge=0, le=365),
+    days_forward: int = Query(60, ge=0, le=365),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    calendar: GoogleCalendarClient = Depends(get_google_calendar),
+) -> list[CalendarMeetingOut]:
+    """Live Google Calendar events of the project's agent account (member-only)."""
+    project = db.get(Project, project_id)
+    if project is None or not _is_member(db, project_id, user.id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
+    refresh_token = (
+        project.credential.google_refresh_token if project.credential else None
+    )
+    if not refresh_token:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Project has no Google authorization — reconnect the agent account",
+        )
+
+    now = datetime.now(timezone.utc)
+    try:
+        events = await calendar.list_events(
+            refresh_token,
+            time_min=now - timedelta(days=days_back),
+            time_max=now + timedelta(days=days_forward),
+        )
+    except GoogleAuthRevokedError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Google authorization expired or was revoked — reconnect the agent account",
+        ) from exc
+    except GoogleCalendarError as exc:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY, "Could not reach Google Calendar"
+        ) from exc
+
+    return [
+        _event_to_meeting(event)
+        for event in events
+        if event.get("status") != "cancelled"
+    ]
+
+
+def _event_to_meeting(event: dict) -> CalendarMeetingOut:
+    start = event.get("start") or {}
+    end = event.get("end") or {}
+    meet_link = event.get("hangoutLink")
+    if not meet_link:
+        entry_points = (event.get("conferenceData") or {}).get("entryPoints") or []
+        for entry in entry_points:
+            if entry.get("entryPointType") == "video":
+                meet_link = entry.get("uri")
+                break
+    return CalendarMeetingOut(
+        id=event["id"],
+        title=event.get("summary"),
+        start=start.get("dateTime") or start.get("date"),
+        end=end.get("dateTime") or end.get("date"),
+        all_day="date" in start,
+        organizer_email=(event.get("organizer") or {}).get("email"),
+        attendees=[
+            CalendarAttendeeOut(
+                email=a.get("email"),
+                display_name=a.get("displayName"),
+                response_status=a.get("responseStatus"),
+                organizer=bool(a.get("organizer")),
+            )
+            for a in event.get("attendees") or []
+        ],
+        meet_link=meet_link,
+        html_link=event.get("htmlLink"),
+        status=event.get("status"),
+    )
 
 
 @router.get("/{project_id}", response_model=ProjectOut)

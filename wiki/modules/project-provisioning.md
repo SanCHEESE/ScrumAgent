@@ -4,7 +4,7 @@ title: "Project Provisioning"
 path: backend/app/routers/projects.py
 status: active
 created: 2026-06-02
-updated: 2026-06-02
+updated: 2026-06-12
 tags: [module, backend, projects, oauth, integrations]
 ---
 
@@ -43,9 +43,15 @@ agent authorizes its **own** account. See [[decisions/2026-06-02-agent-google-of
 2. The wizard opens it in a **popup** (preserves form state). Someone signs in *as the
    agent account* and consents.
 3. `GET /projects/integrations/google/callback` verifies the signed `state`, exchanges
-   the code for a **refresh token**, enforces the `@municorn.com` agent domain, writes a
-   `PendingOAuth`, and returns an HTML page that `postMessage`s the result back to the
-   wizard.
+   the code for a **refresh token**, enforces the `@municorn.com` agent domain (+
+   `email_verified`), writes a `PendingOAuth`, and returns an HTML page that
+   `postMessage`s the result back to the wizard. Since the OAuth audit (ScrumAgent-imt,
+   2026-06-12) **every failure also renders that popup page** (`ok=false` +
+   `error∈{wrong_domain, no_refresh_token, exchange_failed, access_denied, missing_code}`)
+   — a raised JSON error would never `postMessage` and left the wizard stuck on
+   "Waiting…". A grant without a refresh token is rejected up front; a replayed/refreshed
+   callback is idempotent (no duplicate-PK 500). `StepGoogle.tsx` additionally polls
+   `popup.closed`, so a manually closed popup resets the button with an error.
 4. `POST /projects` requires a valid, unconsumed `auth_session_id` owned by the caller →
    moves the refresh token into `ProjectCredential`, deletes the `PendingOAuth`. Missing
    → `400` (Google is a hard gate).

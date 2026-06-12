@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type JSX } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { API_BASE, ApiError, api } from "@/lib/api";
@@ -13,14 +13,30 @@ export interface StepGoogleProps {
 
 const POPUP_SOURCE = "scrumagent-google-oauth";
 
+// Error codes the backend popup can report back (see routers/projects.py).
+const POPUP_ERRORS: Record<string, string> = {
+  access_denied: "Authorization was cancelled. Please try again.",
+  missing_code: "Authorization was cancelled. Please try again.",
+  wrong_domain: "The agent account must be a @municorn.com Google account.",
+  no_refresh_token:
+    "Google didn't grant offline access. Remove Kabanchik under myaccount.google.com → Security → Third-party access, then retry.",
+  exchange_failed: "Google sign-in failed. Please try again.",
+};
+
 export function StepGoogle({ data, onChange }: StepGoogleProps): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const connected = Boolean(data.googleAuthSessionId);
+  // Active-attempt teardown (message listener + popup-closed poller), so a
+  // manually closed popup can't leave the button stuck on "Waiting…".
+  const cleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => () => cleanupRef.current?.(), []);
 
   const authorize = async () => {
     setBusy(true);
     setError(null);
+    cleanupRef.current?.();
     try {
       const { authorize_url, auth_session_id } = await api.startGoogleAuth();
       const popup = window.open(
@@ -29,6 +45,13 @@ export function StepGoogle({ data, onChange }: StepGoogleProps): JSX.Element {
         "width=520,height=680",
       );
       const backendOrigin = new URL(API_BASE).origin;
+      let settled = false;
+
+      const cleanup = () => {
+        window.removeEventListener("message", handler);
+        window.clearInterval(poll);
+        cleanupRef.current = null;
+      };
 
       const handler = (event: MessageEvent) => {
         if (event.origin !== backendOrigin) return;
@@ -37,9 +60,11 @@ export function StepGoogle({ data, onChange }: StepGoogleProps): JSX.Element {
           ok?: boolean;
           authSessionId?: string;
           email?: string;
+          error?: string;
         };
         if (!msg || msg.source !== POPUP_SOURCE) return;
-        window.removeEventListener("message", handler);
+        settled = true;
+        cleanup();
         setBusy(false);
         if (msg.ok && msg.authSessionId === auth_session_id) {
           onChange({
@@ -47,13 +72,29 @@ export function StepGoogle({ data, onChange }: StepGoogleProps): JSX.Element {
             googleAccountEmail: msg.email ?? data.agentEmail,
           });
         } else {
-          setError("Authorization was cancelled. Please try again.");
+          setError(
+            (msg.error && POPUP_ERRORS[msg.error]) ??
+              "Authorization was cancelled. Please try again.",
+          );
         }
       };
       window.addEventListener("message", handler);
 
+      const poll = window.setInterval(() => {
+        if (!popup || !popup.closed) return;
+        // Give a just-posted result message a beat to arrive before failing.
+        window.setTimeout(() => {
+          if (settled) return;
+          cleanup();
+          setBusy(false);
+          setError("The popup was closed before authorization completed.");
+        }, 400);
+        window.clearInterval(poll);
+      }, 500);
+      cleanupRef.current = cleanup;
+
       if (!popup) {
-        window.removeEventListener("message", handler);
+        cleanup();
         setBusy(false);
         setError("Popup was blocked — allow popups for this site and retry.");
       }

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
 from app.database import make_engine, make_session_factory
+from app.google_calendar import GoogleCalendarClient
 from app.integrations import IntegrationValidators
 from app.models import User
 from app.oauth import GoogleOAuthClient
@@ -72,6 +73,16 @@ def get_agent_google_oauth(
     )
 
 
+def get_google_calendar(
+    settings: Settings = Depends(get_settings),
+) -> GoogleCalendarClient:
+    """Calendar reader running on the agent account's offline grant."""
+    return GoogleCalendarClient(
+        client_id=settings.google_client_id,
+        client_secret=settings.google_client_secret,
+    )
+
+
 def get_integration_validators() -> IntegrationValidators:
     """Live Jira/Notion credential checkers (network-touching; faked in tests)."""
     return IntegrationValidators()
@@ -94,7 +105,12 @@ def get_current_user(
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED, "Invalid or expired token"
         ) from exc
-    user = db.get(User, int(payload.get("sub", 0)))
+    sub = payload.get("sub")
+    # OAuth ``state`` tokens are signed with the same key — their ``purpose``
+    # claim (and a non-numeric/absent ``sub``) must never resolve to a session.
+    if payload.get("purpose") is not None or not isinstance(sub, str) or not sub.isdigit():
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
+    user = db.get(User, int(sub))
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
     return user

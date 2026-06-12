@@ -1,61 +1,149 @@
 "use client";
 
-import { useMemo, useState } from "react";
+// Meetings — live Google Calendar events of each project's agent account
+// (ScrumAgent-m5x). Replaces the mock archive: we list every user project and
+// merge the agent calendars, split into Upcoming / Past.
+
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
-import { MeetingRow } from "@/components/screens/meetings/MeetingRow";
-import { MEETINGS } from "@/lib/mock-data";
-import type { MeetingStatus } from "@/lib/types";
+import {
+  CalendarMeetingRow,
+  type CalendarMeetingVM,
+} from "@/components/screens/meetings/CalendarMeetingRow";
+import { ApiError, api } from "@/lib/api";
 
-type Filter = "all" | MeetingStatus;
+type Filter = "all" | "upcoming" | "past";
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "done", label: "Done" },
-  { key: "analyzing", label: "Analyzing" },
-  { key: "transcribing", label: "Transcribing" },
-  { key: "error", label: "Error" },
+  { key: "upcoming", label: "Upcoming" },
+  { key: "past", label: "Past" },
 ];
+
+interface LoadState {
+  loading: boolean;
+  meetings: CalendarMeetingVM[];
+  /** Per-project load failures, e.g. revoked Google grant. */
+  problems: string[];
+  /** No projects at all → point at the wizard instead of an empty table. */
+  noProjects: boolean;
+}
+
+const INITIAL: LoadState = {
+  loading: true,
+  meetings: [],
+  problems: [],
+  noProjects: false,
+};
+
+function startMs(m: CalendarMeetingVM): number {
+  if (!m.start) return 0;
+  return new Date(m.start.length === 10 ? `${m.start}T00:00:00` : m.start).getTime();
+}
 
 export default function MeetingsPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
+  const [state, setState] = useState<LoadState>(INITIAL);
 
-  const sorted = useMemo(
-    () => [...MEETINGS].sort((a, b) => (a.date < b.date ? 1 : -1)),
-    [],
-  );
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const projects = await api.listProjects();
+        if (projects.length === 0) {
+          if (!cancelled)
+            setState({ ...INITIAL, loading: false, noProjects: true });
+          return;
+        }
+        const now = Date.now();
+        const results = await Promise.allSettled(
+          projects.map(async (p) => {
+            const events = await api.listProjectMeetings(p.id);
+            return events.map<CalendarMeetingVM>((e) => ({
+              ...e,
+              projectName: p.name,
+              projectColor: p.color,
+              upcoming: e.start
+                ? new Date(
+                    e.start.length === 10 ? `${e.start}T00:00:00` : e.start,
+                  ).getTime() >= now
+                : false,
+            }));
+          }),
+        );
+        if (cancelled) return;
+        const meetings = results
+          .filter(
+            (r): r is PromiseFulfilledResult<CalendarMeetingVM[]> =>
+              r.status === "fulfilled",
+          )
+          .flatMap((r) => r.value);
+        const problems = results
+          .map((r, i) =>
+            r.status === "rejected"
+              ? `${projects[i].name}: ${
+                  r.reason instanceof ApiError
+                    ? r.reason.message
+                    : "could not load calendar"
+                }`
+              : null,
+          )
+          .filter((p): p is string => p !== null);
+        setState({ loading: false, meetings, problems, noProjects: false });
+      } catch (e) {
+        if (cancelled) return;
+        setState({
+          ...INITIAL,
+          loading: false,
+          problems: [e instanceof ApiError ? e.message : "Could not load projects"],
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return sorted.filter((m) => {
-      if (filter !== "all" && m.status !== filter) return false;
-      if (q && !m.title.toLowerCase().includes(q)) return false;
+    const subset = state.meetings.filter((m) => {
+      if (filter === "upcoming" && !m.upcoming) return false;
+      if (filter === "past" && m.upcoming) return false;
+      if (
+        q &&
+        !(m.title ?? "").toLowerCase().includes(q) &&
+        !(m.organizer_email ?? "").toLowerCase().includes(q)
+      )
+        return false;
       return true;
     });
-  }, [sorted, filter, query]);
+    // Upcoming reads soonest-first; past (and the mixed view) newest-first.
+    return subset.sort((a, b) =>
+      filter === "upcoming" ? startMs(a) - startMs(b) : startMs(b) - startMs(a),
+    );
+  }, [state.meetings, filter, query]);
 
   const counts = useMemo(() => {
-    const out: Record<Filter, number> = {
-      all: sorted.length,
-      done: 0,
-      analyzing: 0,
-      transcribing: 0,
-      error: 0,
+    const upcoming = state.meetings.filter((m) => m.upcoming).length;
+    return {
+      all: state.meetings.length,
+      upcoming,
+      past: state.meetings.length - upcoming,
     };
-    for (const m of sorted) out[m.status] += 1;
-    return out;
-  }, [sorted]);
+  }, [state.meetings]);
 
   return (
     <div className="page">
       <div className="page-header">
         <div>
           <h1 className="page-title">
-            Meetings <em>archive</em>
+            Meetings <em>calendar</em>
           </h1>
           <div className="page-subtitle">
-            Every meeting ScrumAgent has joined or analyzed.
+            Live from each project&apos;s agent Google Calendar.
           </div>
         </div>
         <div className="hstack">
@@ -73,6 +161,13 @@ export default function MeetingsPage() {
           </Button>
         </div>
       </div>
+
+      {state.problems.map((p) => (
+        <div className="project-error" role="alert" key={p}>
+          <Icon name="alert" size={12} />
+          {p}
+        </div>
+      ))}
 
       <div className="tabs" role="tablist">
         {FILTERS.map((f) => (
@@ -99,7 +194,20 @@ export default function MeetingsPage() {
           <div>Status</div>
           <div></div>
         </div>
-        {filtered.length === 0 ? (
+        {state.loading ? (
+          <div className="empty">
+            <div className="empty-title">Loading calendar…</div>
+            <div className="empty-sub">Fetching events from Google Calendar.</div>
+          </div>
+        ) : state.noProjects ? (
+          <div className="empty">
+            <div className="empty-title">No projects yet</div>
+            <div className="empty-sub">
+              <Link href="/projects/new">Create a project</Link> and authorize
+              its agent account to see the team calendar here.
+            </div>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="empty">
             <div className="empty-title">No meetings match</div>
             <div className="empty-sub">
@@ -107,7 +215,9 @@ export default function MeetingsPage() {
             </div>
           </div>
         ) : (
-          filtered.map((m) => <MeetingRow key={m.id} meeting={m} />)
+          filtered.map((m) => (
+            <CalendarMeetingRow key={`${m.projectName}-${m.id}`} meeting={m} />
+          ))
         )}
       </div>
     </div>

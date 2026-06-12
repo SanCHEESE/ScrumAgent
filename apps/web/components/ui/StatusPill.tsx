@@ -32,6 +32,8 @@ const STATUS_MAP: Record<string, PillSpec> = {
   rejected: { cls: "badge-neutral", label: "Rejected" },
   applied: { cls: "badge-paid", label: "Applied" },
   processing: { cls: "badge-unpaid", label: "In progress" },
+  scheduled: { cls: "badge-brand", label: "Scheduled" },
+  past: { cls: "badge-neutral", label: "Past" },
 };
 
 export interface StatusPillProps {

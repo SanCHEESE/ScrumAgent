@@ -1,36 +1,39 @@
 ---
 type: meta
 title: "Hot Cache"
-updated: 2026-06-04T09:00:00
+updated: 2026-06-12T12:00:00
 tags: [meta, hot-cache]
 ---
 
 # Recent Context
 
 ## Last Updated
-2026-06-04. **Frontend auth UI hardened (`ScrumAgent-9pf`).** Sidebar-footer chip now shows the *real* signed-in user (name + avatar) with Sign out / Sign in, and any 401 clears the token and redirects to `/login` — killing the "Invalid or expired token" dead-end on **Projects** for users whose earlier login expired. **44/44 Playwright e2e green, tsc clean**, verified live against the running backend. On branch `main` (uncommitted at time of writing).
+2026-06-12. **OAuth audit fixes (`ScrumAgent-imt`) + live calendar meetings (`ScrumAgent-m5x`).** Both Google OAuth flows hardened end-to-end, and `/meetings` now shows *real* Google Calendar events from each project's agent account instead of mocks. Backend 85 pytest green, 47 Playwright e2e green, tsc clean, verified live in the browser (incl. a real `invalid_grant` → "reconnect" alert round-trip against Google).
 
 ## Key Recent Facts
-- Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker Compose for Municorn (`@municorn.com`). Second deploy target = single GCE VM.
-- Two services: `backend` (FastAPI + DeepAgents + 3 agents + DB + RAG) and `frontend` (Next.js 14 + TS at `apps/web/`).
-- Three agents only: `meeting_participation`, `user_chat`, `jira_notion`. Orchestrator-mediated.
-- LLM OpenAI-only, model **`gpt-5.4-mini`**. Jira via **Rovo**, Notion via **MCP**. Prod DB = **Cloud SQL Postgres**, local/tests = **SQLite**.
+- Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker Compose for Municorn (`@municorn.com`); second target = single GCE VM.
+- Two services: `backend` (FastAPI + DeepAgents + 3 agents + DB + RAG), `frontend` (Next.js 14 at `apps/web/`).
+- LLM OpenAI-only (`gpt-5.4-mini`). Jira via **Rovo**, Notion via **MCP**. Prod DB Cloud SQL Postgres, local/tests SQLite.
 - Canonical plan: [[sources/mvp-v2-plan]]. Tracking: `bd`. TDD mandatory.
 
-## What just shipped — auth UI ([[modules/auth]] → *Frontend session*)
-- **`apps/web/lib/auth.ts`** — added `logout()` (clear token → `/login`), `redirectToLogin()` (loop-guarded), and `decodeTokenEmail()` (unverified, display-only label from the JWT `email` claim).
-- **`apps/web/lib/api.ts`** — `apiFetch` now treats **any 401** as expired/invalid: clears `localStorage["kabanchik.token"]` and redirects to `/login`. `ProjectsListLive` ignores 401 (no error flash on the way out).
-- **`components/shell/UserMenu.tsx`** (new, wired into `Sidebar.tsx`) — replaces the hard-coded mock `alice`. Token present → initials avatar + real name (`/auth/me`), click → upward popover with email + **Sign out**. No token → **Sign in** → `/login`. Validates `/auth/me` on mount, so expired sessions bounce to login on app load.
-- **Tests** — `tests/e2e/auth.spec.ts` (real-name, sign out, unauth Sign in, expired-token-on-Projects → `/login`); repaired stale `login.spec.ts` (button hands off to backend OAuth start, not mock route-home).
+## What just shipped
 
-## Local dev environment (this session)
-- Backend runs as a **local uvicorn** (`backend/.venv`), NOT Docker — Colima daemon was down. `DATABASE_URL=sqlite:////…/backend/.local/dev.db`. Frontend dev server on `:3000`, backend on `:8000`.
-- Mint a dev JWT: `DATABASE_URL=… PYTHONPATH=. .venv/bin/python .local/_mint_dev_token.py` (seeds `dev@municorn.com` "Dev User", id 1).
+**OAuth fixes** ([[modules/auth]], [[modules/project-provisioning]]):
+- Login callback: consent-cancel / exchange-failure / wrong-domain / unverified-email now 302 to `/login?error=<code>` (login page shows an alert) — was a raw 422/403 JSON dead-end. `email_verified` required in both callbacks.
+- Agent-flow callback (`/projects/integrations/google/callback`): **always** renders the popup `postMessage` page, ok=false with `wrong_domain` / `no_refresh_token` / `exchange_failed` — the wizard no longer hangs on "Waiting…". Replay idempotent. `StepGoogle.tsx` also polls `popup.closed`.
+- `get_current_user`: 401 (not 500) on non-numeric `sub`; rejects `purpose`-claim state JWTs (same signing key).
+- `main.py` CORS origin now from `Settings.frontend_base_url` (.env honored), env-var fallback.
 
-## Open threads / housekeeping
-- **`feat/project-creation-lb9` (ScrumAgent-lb9) still not pushed/merged** — 6 commits. This auth work was done on `main` on top of it; decide branch/merge order.
-- Console shows benign **Fast Refresh** warnings ("Cannot update HotReload while rendering Sidebar") only during live edits — a clean reload adds none; not present in prod builds.
-- Still open follow-ups: migrate the rest of the shell (project switcher, "Good morning, Alice", chat) off `mock-data.ts` to real APIs (`ScrumAgent-r0k`); Alembic for the 4 project tables (`ScrumAgent-soe`); email-invite for not-yet-signed-in members.
+**Live meetings** ([[modules/calendar-sync]]):
+- New `backend/app/google_calendar.py` — `GoogleCalendarClient.list_events(refresh_token, …)` (refresh→access token, primary-calendar `events.list`, `singleEvents`); `GoogleAuthRevokedError` on `invalid_grant`. Injectable via `deps.get_google_calendar`.
+- `GET /projects/{id}/meetings?days_back&days_forward` (member-only; 409 grant missing/revoked → "reconnect the agent account", 502 upstream) → normalized events (all-day, attendees, Meet link, `htmlLink`).
+- `/meetings` page rewritten: merges live events across all user projects; All/Upcoming/Past tabs; search; attendee initials avatars; Scheduled/Past pills; rows open the event in Google Calendar; per-project failures = inline alerts; no projects → "Create a project" hint. Detail page `/meetings/[id]` still mock (artifacts pipeline pending). Nothing persisted yet — endpoint proxies live.
 
-## Next
-Commit/push the auth work (ScrumAgent-9pf) + the project-creation branch. Then resume value-first slice 1 backend: `wqj` LLM gateway → `die` orchestrator → `qor` Rovo + `ilz` Notion MCP → `2u9` jira_notion agent → wire into real projects.
+## Local dev environment
+- Backend = local uvicorn (`backend/.venv`), `DATABASE_URL=sqlite:////…/backend/.local/dev.db`, frontend dev on `:3000`. Mint dev JWT: `DATABASE_URL=… PYTHONPATH=. .venv/bin/python .local/_mint_dev_token.py`.
+- Docker daemon = Docker Desktop (see bd memory `local-docker-daemon-colima`).
+
+## Open threads
+- ESLint is not configured in `apps/web` (`next lint` prompts interactively) — quality gates today are tsc + Playwright.
+- Mock data still drives: meeting detail page, project switcher, home greeting, chat (`ScrumAgent-r0k`). Alembic pending (`ScrumAgent-soe`). `PendingOAuth` rows still never expire (minor hygiene, noted in ScrumAgent-imt).
+- Next: value-first slice 1 backend — `wqj` LLM gateway → `die` orchestrator → `qor` Rovo + `ilz` Notion MCP → `2u9` jira_notion agent.

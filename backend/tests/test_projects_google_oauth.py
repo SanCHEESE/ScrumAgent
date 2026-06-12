@@ -58,10 +58,13 @@ class FakeAgentOAuth:
         return f"https://accounts.google.com/o/oauth2/v2/auth?state={state}"
 
     async def exchange_code(self, code: str) -> dict:
-        return {"access_token": "at", "refresh_token": self.refresh}
+        tokens = {"access_token": "at"}
+        if self.refresh is not None:
+            tokens["refresh_token"] = self.refresh
+        return tokens
 
     async def fetch_userinfo(self, access_token: str) -> dict:
-        return {"sub": "agent-sub", "email": self.email}
+        return {"sub": "agent-sub", "email": self.email, "email_verified": True}
 
 
 @pytest.fixture
@@ -154,5 +157,65 @@ def test_google_callback_rejects_off_domain_account(client, db_session, fake_oau
         "/projects/integrations/google/callback",
         params={"code": "x", "state": _state_from(start["authorize_url"])},
     )
-    assert resp.status_code == 403
+    # Still the popup page (so the wizard hears back), but ok=false + no row.
+    assert resp.status_code == 200
+    assert '"ok": false' in resp.text
+    assert "wrong_domain" in resp.text
     assert db_session.get(PendingOAuth, start["auth_session_id"]) is None
+
+
+def test_google_callback_rejects_missing_refresh_token(client, db_session, fake_oauth):
+    """A grant without offline access is useless — fail in the popup, not later."""
+    user = _make_user(db_session)
+    start = client.post(
+        "/projects/integrations/google/start", headers=_auth(user.id)
+    ).json()
+    fake_oauth.refresh = None
+    resp = client.get(
+        "/projects/integrations/google/callback",
+        params={"code": "x", "state": _state_from(start["authorize_url"])},
+    )
+    assert resp.status_code == 200
+    assert '"ok": false' in resp.text
+    assert "no_refresh_token" in resp.text
+    assert db_session.get(PendingOAuth, start["auth_session_id"]) is None
+
+
+def test_google_callback_exchange_failure_renders_popup(client, db_session, fake_oauth):
+    import httpx
+
+    async def _boom(code: str) -> dict:
+        raise httpx.ConnectError("boom")
+
+    user = _make_user(db_session)
+    start = client.post(
+        "/projects/integrations/google/start", headers=_auth(user.id)
+    ).json()
+    fake_oauth.exchange_code = _boom
+    resp = client.get(
+        "/projects/integrations/google/callback",
+        params={"code": "x", "state": _state_from(start["authorize_url"])},
+    )
+    assert resp.status_code == 200
+    assert '"ok": false' in resp.text
+    assert "exchange_failed" in resp.text
+
+
+def test_google_callback_replay_is_idempotent(client, db_session):
+    """A refreshed/replayed callback page must not 500 on the duplicate PK."""
+    user = _make_user(db_session)
+    start = client.post(
+        "/projects/integrations/google/start", headers=_auth(user.id)
+    ).json()
+    params = {"code": "xyz", "state": _state_from(start["authorize_url"])}
+    first = client.get("/projects/integrations/google/callback", params=params)
+    second = client.get("/projects/integrations/google/callback", params=params)
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert '"ok": true' in second.text
+    assert (
+        db_session.query(PendingOAuth)
+        .filter(PendingOAuth.id == start["auth_session_id"])
+        .count()
+        == 1
+    )

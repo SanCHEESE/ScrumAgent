@@ -17,21 +17,38 @@ import "@/styles/screens/login.css";
 
 const APP_VERSION = "v0.1.0";
 
+// Error codes the backend callback can bounce back with (`/login?error=…`).
+const LOGIN_ERRORS: Record<string, string> = {
+  access_denied: "Sign-in was cancelled.",
+  domain_not_allowed: "Only @municorn.com accounts can sign in.",
+  exchange_failed: "Google sign-in failed. Please try again.",
+  missing_code: "Google sign-in failed. Please try again.",
+};
+
 export default function LoginPage() {
   const router = useRouter();
   const [signingIn, setSigningIn] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Returning from the backend OAuth callback with `#token=…`: stash it and
-  // enter the app.
+  // enter the app. A failed round-trip lands here with `?error=…` instead.
   useEffect(() => {
     if (consumeTokenFromHash()) {
       router.replace("/");
+      return;
+    }
+    const code = new URLSearchParams(window.location.search).get("error");
+    if (code) {
+      setError(LOGIN_ERRORS[code] ?? "Sign-in failed. Please try again.");
+      // Strip the code so a reload doesn't re-show a stale error.
+      history.replaceState(null, "", window.location.pathname);
     }
   }, [router]);
 
   function handleSignIn() {
     if (signingIn) return;
     setSigningIn(true);
+    setError(null);
     // Hand off to the backend, which redirects to Google consent.
     startGoogleLogin();
   }
@@ -59,6 +76,12 @@ export default function LoginPage() {
         </Button>
 
         <p className="login-domain-note">Only @municorn.com accounts</p>
+
+        {error && (
+          <p className="login-error" role="alert">
+            {error}
+          </p>
+        )}
 
         <div className="login-footer">
           <a>Terms</a>

@@ -99,6 +99,27 @@ export interface ProjectMemberOut {
   role: string;
 }
 
+export interface CalendarAttendee {
+  email: string | null;
+  display_name: string | null;
+  response_status: string | null;
+  organizer: boolean;
+}
+
+export interface CalendarMeeting {
+  id: string;
+  title: string | null;
+  /** RFC 3339 dateTime, or YYYY-MM-DD for all-day events. */
+  start: string | null;
+  end: string | null;
+  all_day: boolean;
+  organizer_email: string | null;
+  attendees: CalendarAttendee[];
+  meet_link: string | null;
+  html_link: string | null;
+  status: string | null;
+}
+
 export interface ProjectOut {
   id: string;
   name: string;
@@ -142,6 +163,10 @@ export const api = {
       body: JSON.stringify(p),
     }),
   listProjects: () => apiFetch<ProjectOut[]>("/projects"),
+  listProjectMeetings: (projectId: string) =>
+    apiFetch<CalendarMeeting[]>(
+      `/projects/${encodeURIComponent(projectId)}/meetings`,
+    ),
 };
 
 export { API_BASE };

@@ -1,22 +1,173 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { clearStorage } from "./_setup";
+
+const API = "http://localhost:8000";
+const TOKEN_KEY = "kabanchik.token";
+
+const PROJECT = {
+  id: "p-1",
+  name: "Telecom",
+  description: null,
+  color: "#0077e6",
+  agent_email: "agent@municorn.com",
+  google_connected: true,
+  jira_site_url: null,
+  jira_user_email: null,
+  jira_project_key: null,
+  notion_section_url: null,
+  notion_page_id: null,
+  members: [],
+  created_at: "2026-06-01T00:00:00Z",
+};
+
+function isoIn(hours: number): string {
+  return new Date(Date.now() + hours * 3600_000).toISOString();
+}
+
+const MEETINGS = [
+  {
+    id: "evt-up",
+    title: "Sprint Planning",
+    start: isoIn(24),
+    end: isoIn(25),
+    all_day: false,
+    organizer_email: "agent@municorn.com",
+    attendees: [
+      {
+        email: "alice@municorn.com",
+        display_name: "Alice Kim",
+        response_status: "accepted",
+        organizer: false,
+      },
+    ],
+    meet_link: "https://meet.google.com/abc-defg-hij",
+    html_link: "https://calendar.google.com/event?eid=evt-up",
+    status: "confirmed",
+  },
+  {
+    id: "evt-past",
+    title: "Retro",
+    start: isoIn(-48),
+    end: isoIn(-47),
+    all_day: false,
+    organizer_email: "agent@municorn.com",
+    attendees: [],
+    meet_link: null,
+    html_link: "https://calendar.google.com/event?eid=evt-past",
+    status: "confirmed",
+  },
+];
+
+/** Authenticated app with one project whose agent calendar has 2 events. */
+async function mockCalendarApi(page: Page): Promise<void> {
+  await page.context().route(`${API}/auth/me`, (route) =>
+    route.fulfill({
+      json: { id: 1, email: "alice@municorn.com", name: "Alice" },
+    }),
+  );
+  await page.context().route(`${API}/projects`, (route) =>
+    route.fulfill({ json: [PROJECT] }),
+  );
+  await page.context().route(`${API}/projects/p-1/meetings*`, (route) =>
+    route.fulfill({ json: MEETINGS }),
+  );
+  await page.goto("/login");
+  await page.evaluate(
+    ([key, value]) => window.localStorage.setItem(key, value),
+    [TOKEN_KEY, "e2e.token.value"],
+  );
+}
 
 test.beforeEach(async ({ page }) => {
   await clearStorage(page);
 });
 
-test.describe("Meetings list", () => {
-  test("renders at least 5 meetings", async ({ page }) => {
+test.describe("Meetings list (live calendar)", () => {
+  test("renders real calendar events with Upcoming/Past split", async ({
+    page,
+  }) => {
+    await mockCalendarApi(page);
     await page.goto("/meetings");
+
     const rows = page.locator(".meetings-table-row");
-    const count = await rows.count();
-    expect(count).toBeGreaterThanOrEqual(5);
+    const titles = page.locator(".mtr-title");
+    await expect(rows).toHaveCount(2);
+    await expect(titles.filter({ hasText: "Sprint Planning" })).toBeVisible();
+    await expect(titles.filter({ hasText: "Retro" })).toBeVisible();
+
+    // Status pills reflect upcoming vs past.
+    await expect(page.getByText("Scheduled", { exact: true })).toBeVisible();
+    await expect(page.getByText("Past", { exact: true })).toBeVisible();
+
+    // Upcoming tab filters down to the future event.
+    await page.getByRole("tab", { name: /Upcoming/ }).click();
+    await expect(rows).toHaveCount(1);
+    await expect(titles.filter({ hasText: "Sprint Planning" })).toBeVisible();
   });
 
-  test("clicking a row routes to the detail page", async ({ page }) => {
+  test("rows link out to the Google Calendar event", async ({ page }) => {
+    await mockCalendarApi(page);
     await page.goto("/meetings");
-    await page.locator(".meetings-table-row").first().click();
-    await expect(page).toHaveURL(/\/meetings\/m\d+/);
+    const first = page.locator(".meetings-table-row").first();
+    await expect(first).toHaveAttribute(
+      "href",
+      /calendar\.google\.com\/event/,
+    );
+    await expect(first).toHaveAttribute("target", "_blank");
+  });
+
+  test("shows the create-project hint when there are no projects", async ({
+    page,
+  }) => {
+    await page.context().route(`${API}/auth/me`, (route) =>
+      route.fulfill({
+        json: { id: 1, email: "alice@municorn.com", name: "Alice" },
+      }),
+    );
+    await page.context().route(`${API}/projects`, (route) =>
+      route.fulfill({ json: [] }),
+    );
+    await page.goto("/login");
+    await page.evaluate(
+      ([key, value]) => window.localStorage.setItem(key, value),
+      [TOKEN_KEY, "e2e.token.value"],
+    );
+    await page.goto("/meetings");
+    await expect(page.getByText("No projects yet")).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Create a project" }),
+    ).toBeVisible();
+  });
+
+  test("surfaces a per-project calendar failure as an alert", async ({
+    page,
+  }) => {
+    await page.context().route(`${API}/auth/me`, (route) =>
+      route.fulfill({
+        json: { id: 1, email: "alice@municorn.com", name: "Alice" },
+      }),
+    );
+    await page.context().route(`${API}/projects`, (route) =>
+      route.fulfill({ json: [PROJECT] }),
+    );
+    await page.context().route(`${API}/projects/p-1/meetings*`, (route) =>
+      route.fulfill({
+        status: 409,
+        json: {
+          detail:
+            "Google authorization expired or was revoked — reconnect the agent account",
+        },
+      }),
+    );
+    await page.goto("/login");
+    await page.evaluate(
+      ([key, value]) => window.localStorage.setItem(key, value),
+      [TOKEN_KEY, "e2e.token.value"],
+    );
+    await page.goto("/meetings");
+    await expect(page.locator(".project-error")).toContainText(
+      /Telecom: .*reconnect/,
+    );
   });
 });
 

@@ -2,13 +2,30 @@
 type: meta
 title: "Wiki Log"
 created: 2026-05-10
-updated: 2026-06-04
+updated: 2026-06-12
 tags: [meta, log]
 ---
 
 # Wiki Log
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
+
+## 2026-06-12 — OAuth audit fixes + live calendar meetings (ScrumAgent-imt, ScrumAgent-m5x)
+
+Audited both Google OAuth flows and fixed: consent-cancel no longer 422s (login
+callback now 302s to `/login?error=<code>`, rendered as an alert); `email_verified`
+required in both callbacks; agent-flow callback renders the `postMessage` popup on
+*every* failure (`wrong_domain`, `no_refresh_token`, `exchange_failed`) instead of raw
+JSON that left the wizard stuck on "Waiting…"; replayed callback idempotent;
+`get_current_user` 401s on non-numeric `sub` and rejects `purpose`-claim (state) JWTs;
+CORS origin from `Settings` (.env honored); `StepGoogle` polls `popup.closed`. Then
+shipped the first **live calendar read path**: `app/google_calendar.py`
+(refresh-token → `events.list`, injectable) + member-only
+`GET /projects/{id}/meetings` (409 revoked / 502 upstream), and `/meetings` now renders
+real agent-calendar events across all projects (Upcoming/Past tabs, Meet badge,
+Google-Calendar deep links) instead of mock data. Updated [[modules/auth]],
+[[modules/project-provisioning]], [[modules/calendar-sync]]. Backend 85 tests green,
+47 Playwright e2e green, verified live (incl. real `invalid_grant` → reconnect alert).
 
 ---
 

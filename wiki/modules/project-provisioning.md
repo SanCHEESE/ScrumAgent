@@ -5,7 +5,7 @@ path: backend/app/routers/projects.py
 status: active
 created: 2026-06-02
 updated: 2026-06-12
-tags: [module, backend, projects, oauth, integrations]
+tags: [module, backend, projects, oauth, integrations, billing]
 ---
 
 # Project Provisioning
@@ -82,6 +82,7 @@ integrations are otherwise skippable. The Notion section link is parsed to a pag
 | `PUT /projects/{id}/integrations/notion` | replace Notion creds — live-validated, `422` on failure |
 | `PUT /projects/{id}/integrations/google` | reconnect agent account from a `PendingOAuth` grant |
 | `POST /projects/{id}/integrations/{provider}/test` | probe the **stored** creds (`google`/`jira`/`notion`); `409` if unconfigured |
+| `GET /projects/{id}/billing` | current-cycle usage aggregation from `llm_usage` (member-only) |
 
 All are protected by `get_current_user` except the callback (identity rides in the signed `state`).
 
@@ -97,6 +98,31 @@ flips it back). **Reconnect** reuses the wizard popup handshake, then
 with the meetings endpoint's 409 "reconnect the agent account". Status responses carry
 booleans + non-secret fields only. OpenAI/Slack mock cards were dropped (OpenAI key is
 server-side config; Slack doesn't exist yet).
+
+## Settings → Billing (ScrumAgent-307, 2026-06-12)
+
+`/settings → Billing` is live (was a hardcoded mock). New `llm_usage` table
+(`app/models/usage.py`): one row per provider call — `project_id`, `run_id`
+(groups calls of one agent invocation), `context` (human label, e.g. meeting
+title), `provider`, `model`, `kind` (`llm`/`stt`/`embed`), `category`
+(orchestrator/subagents/whisper/embeddings/storage, free-form string),
+`input_units`/`output_units` (M tokens or STT minutes), `cost_usd`.
+**The LLM gateway ([[modules/llm-gateway]], `ScrumAgent-wqj`) must write these
+rows** — until it lands, real projects show honest zeros/empty states.
+
+`GET /projects/{id}/billing` aggregates the current calendar month in Python
+(small row volume; sidesteps SQLite/Postgres timestamp quirks): cycle MTD +
+linear projection (`mtd / days_elapsed × days_in_month`), per-category costs,
+per-model usage with a 10-day daily-cost sparkline series, and the 6 most
+recent invocations grouped by `run_id` (rows without one stand alone). No
+budget field exists anywhere yet, so the UI shows spent-vs-projected instead
+of a budget bar.
+
+Frontend: `BillingSection.tsx` (project picker + fetch), props-driven
+`BillingSummary`/`CostBreakdown`/`UsageByModel`/`RecentInvocations`,
+category label/colour map in `billing-format.ts`. `ApiKeysTable` and
+`billing-mock.ts` deleted (keys are server config, never per-user). Dev seed:
+`backend/.local/_seed_billing.py`.
 
 ## Related
 

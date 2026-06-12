@@ -21,7 +21,7 @@ const TITLES: Record<SettingsSectionKey, { title: string; subtitle: string }> = 
   },
   billing: {
     title: "Billing",
-    subtitle: "Cycle spend, cost breakdown, API keys, and per-model usage.",
+    subtitle: "Cycle spend, cost breakdown, and per-model usage.",
   },
   rag: {
     title: "Knowledge base",

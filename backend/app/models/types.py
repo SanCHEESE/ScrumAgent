@@ -85,6 +85,12 @@ class ProjectRole(str, enum.Enum):
     admin = "admin"
 
 
+class UsageKind(str, enum.Enum):
+    llm = "llm"
+    stt = "stt"
+    embed = "embed"
+
+
 class ResponseStyle(str, enum.Enum):
     concise = "concise"
     balanced = "balanced"

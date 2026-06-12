@@ -46,6 +46,15 @@ async function mockSettingsApi(
   await page.context().route(`${API}/projects`, (route) =>
     route.fulfill({ json: [PROJECT_A, PROJECT_B] }),
   );
+  // Live tabs fetch on mount — give them safe defaults so navigating through
+  // sections never leaks a request to a real backend (tests override these
+  // with their own routes when they need specific payloads).
+  await page.context().route(`${API}/projects/*/billing`, (route) =>
+    route.fulfill({ json: EMPTY_BILLING }),
+  );
+  await page.context().route(`${API}/projects/*/integrations`, (route) =>
+    route.fulfill({ json: INTEGRATIONS_STATUS }),
+  );
   await page
     .context()
     .route(`${API}/projects/*/settings/agent`, async (route) => {
@@ -62,6 +71,65 @@ async function mockSettingsApi(
     [TOKEN_KEY, "e2e.token.value"],
   );
 }
+
+const EMPTY_BILLING = {
+  cycle: {
+    start: "2026-06-01",
+    end: "2026-06-30",
+    days_elapsed: 12,
+    days_remaining: 18,
+    mtd_usd: 0,
+    projected_usd: 0,
+  },
+  by_category: [],
+  by_model: [],
+  recent: [],
+  invocations_this_cycle: 0,
+};
+
+const BILLING = {
+  ...EMPTY_BILLING,
+  cycle: { ...EMPTY_BILLING.cycle, mtd_usd: 12.5, projected_usd: 31.25 },
+  by_category: [
+    { category: "orchestrator", cost_usd: 8.0 },
+    { category: "whisper", cost_usd: 4.5 },
+  ],
+  by_model: [
+    {
+      model: "gpt-5.4-mini",
+      provider: "openai",
+      kind: "llm",
+      calls: 42,
+      input_units: 1.4,
+      output_units: 0.3,
+      cost_usd: 8.0,
+      daily_usd: [0, 0, 0, 0, 0, 0, 0, 1, 3, 4],
+    },
+    {
+      model: "whisper-1",
+      provider: "openai",
+      kind: "stt",
+      calls: 3,
+      input_units: 45,
+      output_units: 0,
+      cost_usd: 4.5,
+      daily_usd: [0, 0, 0, 0, 0, 0, 0, 0, 2, 2.5],
+    },
+  ],
+  recent: [
+    {
+      run_id: "run-standup-1",
+      context: "Daily Standup",
+      at: "2026-06-12T10:00:00Z",
+      models: [
+        { model: "gpt-5.4-mini", cost_usd: 1.0 },
+        { model: "whisper-1", cost_usd: 0.5 },
+      ],
+      total_usd: 1.5,
+    },
+  ],
+  invocations_this_cycle: 1,
+};
 
 test.beforeEach(async ({ page }) => {
   await clearStorage(page);
@@ -94,51 +162,60 @@ test.describe("Settings hub", () => {
     }
   });
 
-  test("Billing surface: 3 summary cards, breakdown, keys, usage", async ({
-    page,
-  }) => {
+  test("Billing renders the live per-project usage", async ({ page }) => {
     await mockSettingsApi(page, {});
+    await page.context().route(`${API}/projects/*/billing`, (route) =>
+      route.fulfill({ json: BILLING }),
+    );
     await page.goto("/settings");
     await page.locator(".settings-nav-item").filter({ hasText: "Billing" }).click();
 
-    // 3 summary cards (cycle / plan / next invoice).
+    // 3 summary cards (cycle spend / plan / activity).
     await expect(page.locator(".billing-summary .billing-card")).toHaveCount(3);
+    await expect(page.locator(".billing-card-hero")).toContainText("$12.50");
+    await expect(page.locator(".billing-card-hero")).toContainText("$31.25");
 
-    // Cost breakdown — has its own section panel + bar.
-    await expect(
-      page
-        .locator(".billing-section")
-        .filter({ has: page.getByText(/Cost breakdown/i) }),
-    ).toBeVisible();
+    // Cost breakdown — legend shows mapped category labels.
+    const breakdown = page
+      .locator(".billing-section")
+      .filter({ has: page.getByText(/Cost breakdown/i) });
+    await expect(breakdown).toContainText("Orchestrator LLM");
+    await expect(breakdown).toContainText("Whisper STT");
 
-    // 4 API key rows (mock has 4).
-    await expect(page.locator(".billing-key")).toHaveCount(4);
+    // Usage table lists the models from the API.
+    const usage = page
+      .locator(".billing-section")
+      .filter({ has: page.getByText(/Usage by model/i) });
+    await expect(usage.locator("tbody tr")).toHaveCount(2);
+    await expect(usage).toContainText("gpt-5.4-mini");
 
-    // 4 model rows in the usage table.
-    await expect(
-      page
-        .locator(".billing-section")
-        .filter({ has: page.getByText(/Usage by model/i) }),
-    ).toBeVisible();
+    // Recent invocations show context, run cost, and grouped models.
+    const recent = page
+      .locator(".billing-section")
+      .filter({ has: page.getByText(/Recent agent invocations/i) });
+    await expect(recent.locator(".billing-invocation")).toHaveCount(1);
+    await expect(recent).toContainText("Daily Standup");
+    await expect(recent).toContainText("$1.50");
   });
 
-  test("Reveal toggles the API-key mask", async ({ page }) => {
+  test("Billing shows empty states when no usage exists", async ({ page }) => {
     await mockSettingsApi(page, {});
+    await page.context().route(`${API}/projects/*/billing`, (route) =>
+      route.fulfill({ json: EMPTY_BILLING }),
+    );
     await page.goto("/settings");
     await page.locator(".settings-nav-item").filter({ hasText: "Billing" }).click();
 
-    const firstKeyMask = page.locator(".billing-key").first().locator(".billing-key-mask span").first();
-    const before = (await firstKeyMask.innerText()).trim();
-
-    // The reveal/hide affordance is the first link-button labelled "Reveal".
-    await page
-      .locator(".billing-key")
-      .first()
-      .getByRole("button", { name: /Reveal/ })
-      .click();
-
-    const after = (await firstKeyMask.innerText()).trim();
-    expect(after).not.toBe(before);
+    await expect(page.locator(".billing-card-hero")).toContainText("$0.00");
+    await expect(
+      page.getByText("No usage recorded this cycle yet."),
+    ).toBeVisible();
+    await expect(
+      page.getByText("No model calls recorded this cycle yet."),
+    ).toBeVisible();
+    await expect(
+      page.getByText("No agent invocations recorded this cycle yet."),
+    ).toBeVisible();
   });
 });
 

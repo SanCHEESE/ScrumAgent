@@ -10,6 +10,24 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-12 — Live /settings Billing tab (ScrumAgent-307)
+
+`/settings → Billing` is no longer a hardcoded mock. New `llm_usage` table
+(`app/models/usage.py`): one row per provider call (project, `run_id` grouping
+an agent invocation, `context` label, provider/model/kind/category, units,
+`cost_usd`) — designed for the LLM gateway (`ScrumAgent-wqj`) to write into;
+until it lands real projects show honest zeros. New member-only
+`GET /projects/{id}/billing` aggregates the current calendar month in Python:
+MTD + linear projection, per-category costs, per-model usage with 10-day
+sparkline series, 6 most recent run-grouped invocations. Frontend
+`BillingSection` rewritten: project picker, live fetch, empty states;
+`ApiKeysTable` + `billing-mock.ts` deleted (no fake API keys / invoices /
+budget — no budget config exists, so the hero bar is spent-vs-projected).
+Playwright billing specs now mock `/billing`; `mockSettingsApi` gained default
+routes for live tabs so nav clicks never leak requests to a real backend.
+Dev seed: `backend/.local/_seed_billing.py`. 9 new pytest (131 total green),
+58 Playwright green, verified live against seeded dev data.
+
 ## 2026-06-12 — Live /settings Integrations tab (ScrumAgent-d9q)
 
 `/settings → Integrations` is no longer a hardcoded mock (fake OpenAI/Slack cards,

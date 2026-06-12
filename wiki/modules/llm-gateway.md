@@ -5,7 +5,7 @@ path: "backend/app/llm.py"
 language: python
 status: planned
 created: 2026-05-10
-updated: 2026-05-10
+updated: 2026-06-12
 depends_on: []
 used_by: [runtime-orchestrator, rag]
 tags: [module, llm]
@@ -21,6 +21,10 @@ Single entry point for OpenAI calls.
 - Read `OPENAI_API_KEY` and `OPENAI_MODEL` (default `gpt-4.1-mini`).
 - **Fail fast** if `OPENAI_API_KEY` is missing.
 - Provide small app-owned helpers for: meeting analysis, chat answer composition.
+- **Write an `llm_usage` row per provider call** (model, kind, category,
+  units, cost, `run_id`) — the Settings → Billing tab aggregates these via
+  `GET /projects/{id}/billing` (see [[modules/project-provisioning]] §Billing,
+  shipped `ScrumAgent-307`). Until the gateway lands, billing shows zeros.
 
 ## Why one file
 

@@ -10,7 +10,8 @@ creation.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from calendar import monthrange
+from datetime import date, datetime, timedelta, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -35,6 +36,7 @@ from app.google_calendar import (
 )
 from app.integrations import IntegrationValidators, parse_notion_page_id
 from app.models import (
+    LlmUsage,
     PendingOAuth,
     Project,
     ProjectAgentSettings,
@@ -42,7 +44,7 @@ from app.models import (
     ProjectMember,
     User,
 )
-from app.models.types import ProjectRole, ResponseStyle, uuid_str
+from app.models.types import ProjectRole, ResponseStyle, UsageKind, uuid_str
 from app.oauth import AGENT_SCOPES, GoogleOAuthClient
 from app.security import sign_oauth_state, verify_oauth_state
 
@@ -462,6 +464,165 @@ def put_agent_settings(
         setattr(row, field, value)
     db.commit()
     return req
+
+
+class BillingCycleOut(BaseModel):
+    start: date
+    end: date
+    days_elapsed: int
+    days_remaining: int
+    mtd_usd: float
+    projected_usd: float
+
+
+class CategoryCostOut(BaseModel):
+    category: str
+    cost_usd: float
+
+
+class ModelUsageOut(BaseModel):
+    model: str
+    provider: str
+    kind: UsageKind
+    calls: int
+    input_units: float
+    output_units: float
+    cost_usd: float
+    # Cost per day for the last `SPARK_DAYS` days, oldest first (sparkline).
+    daily_usd: list[float]
+
+
+class InvocationModelOut(BaseModel):
+    model: str
+    cost_usd: float
+
+
+class InvocationOut(BaseModel):
+    run_id: str
+    context: str | None
+    at: datetime
+    models: list[InvocationModelOut]
+    total_usd: float
+
+
+class BillingOut(BaseModel):
+    """Settings → Billing: current-cycle usage aggregated from llm_usage."""
+
+    cycle: BillingCycleOut
+    by_category: list[CategoryCostOut]
+    by_model: list[ModelUsageOut]
+    recent: list[InvocationOut]
+    invocations_this_cycle: int
+
+
+SPARK_DAYS = 10
+RECENT_RUNS = 6
+
+
+def _as_utc(dt: datetime) -> datetime:
+    """SQLite returns server-default timestamps naive — treat those as UTC."""
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+@router.get("/{project_id}/billing", response_model=BillingOut)
+def get_billing(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> BillingOut:
+    """Aggregate the project's usage events for the current calendar month.
+
+    Aggregation happens in Python: event volume is one row per provider call,
+    small at MVP scale, and it sidesteps SQLite/Postgres timestamp-comparison
+    differences.
+    """
+    project = _get_member_project(db, project_id, user)
+    now = datetime.now(timezone.utc)
+    cycle_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    days_in_month = monthrange(now.year, now.month)[1]
+
+    events = [
+        e
+        for e in db.query(LlmUsage).filter(LlmUsage.project_id == project.id)
+        if _as_utc(e.created_at) >= cycle_start
+    ]
+
+    mtd = sum(e.cost_usd for e in events)
+    projected = mtd / now.day * days_in_month if mtd else 0.0
+
+    by_category: dict[str, float] = {}
+    for e in events:
+        by_category[e.category] = by_category.get(e.category, 0.0) + e.cost_usd
+
+    spark_dates = [
+        (now - timedelta(days=offset)).date()
+        for offset in range(SPARK_DAYS - 1, -1, -1)
+    ]
+    spark_index = {d: i for i, d in enumerate(spark_dates)}
+    by_model: dict[str, ModelUsageOut] = {}
+    for e in events:
+        m = by_model.get(e.model)
+        if m is None:
+            m = by_model[e.model] = ModelUsageOut(
+                model=e.model,
+                provider=e.provider,
+                kind=e.kind,
+                calls=0,
+                input_units=0.0,
+                output_units=0.0,
+                cost_usd=0.0,
+                daily_usd=[0.0] * SPARK_DAYS,
+            )
+        m.calls += 1
+        m.input_units += e.input_units
+        m.output_units += e.output_units
+        m.cost_usd += e.cost_usd
+        day = spark_index.get(_as_utc(e.created_at).date())
+        if day is not None:
+            m.daily_usd[day] += e.cost_usd
+
+    # One invocation = all events sharing a run_id; events written without one
+    # (ad-hoc calls) stand alone, keyed by their row id.
+    runs: dict[str, list[LlmUsage]] = {}
+    for e in events:
+        runs.setdefault(e.run_id or e.id, []).append(e)
+    ordered = sorted(
+        runs.items(),
+        key=lambda kv: max(_as_utc(e.created_at) for e in kv[1]),
+        reverse=True,
+    )
+    recent = [
+        InvocationOut(
+            run_id=run_id,
+            context=next((e.context for e in run_events if e.context), None),
+            at=max(_as_utc(e.created_at) for e in run_events),
+            models=[
+                InvocationModelOut(model=e.model, cost_usd=e.cost_usd)
+                for e in run_events
+            ],
+            total_usd=sum(e.cost_usd for e in run_events),
+        )
+        for run_id, run_events in ordered[:RECENT_RUNS]
+    ]
+
+    return BillingOut(
+        cycle=BillingCycleOut(
+            start=cycle_start.date(),
+            end=cycle_start.date().replace(day=days_in_month),
+            days_elapsed=now.day,
+            days_remaining=days_in_month - now.day,
+            mtd_usd=mtd,
+            projected_usd=projected,
+        ),
+        by_category=sorted(
+            (CategoryCostOut(category=k, cost_usd=v) for k, v in by_category.items()),
+            key=lambda c: c.cost_usd,
+            reverse=True,
+        ),
+        by_model=sorted(by_model.values(), key=lambda m: m.cost_usd, reverse=True),
+        recent=recent,
+        invocations_this_cycle=len(runs),
+    )
 
 
 class GoogleIntegrationStatus(BaseModel):

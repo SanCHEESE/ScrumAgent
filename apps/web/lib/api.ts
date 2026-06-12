@@ -174,6 +174,57 @@ export interface IntegrationsStatus {
 
 export type IntegrationProvider = "google" | "jira" | "notion";
 
+export type UsageKind = "llm" | "stt" | "embed";
+
+export interface BillingCycle {
+  /** ISO dates bounding the current calendar-month cycle. */
+  start: string;
+  end: string;
+  days_elapsed: number;
+  days_remaining: number;
+  mtd_usd: number;
+  projected_usd: number;
+}
+
+export interface BillingCategoryCost {
+  category: string;
+  cost_usd: number;
+}
+
+export interface BillingModelUsage {
+  model: string;
+  provider: string;
+  kind: UsageKind;
+  calls: number;
+  /** Millions of tokens for llm/embed, minutes for stt. */
+  input_units: number;
+  output_units: number;
+  cost_usd: number;
+  /** Cost per day, oldest first (sparkline). */
+  daily_usd: number[];
+}
+
+export interface BillingInvocationModel {
+  model: string;
+  cost_usd: number;
+}
+
+export interface BillingInvocation {
+  run_id: string;
+  context: string | null;
+  at: string;
+  models: BillingInvocationModel[];
+  total_usd: number;
+}
+
+export interface Billing {
+  cycle: BillingCycle;
+  by_category: BillingCategoryCost[];
+  by_model: BillingModelUsage[];
+  recent: BillingInvocation[];
+  invocations_this_cycle: number;
+}
+
 export const api = {
   me: () => apiFetch<MeResponse>("/auth/me"),
   listUsers: () => apiFetch<DirectoryUser[]>("/users/directory"),
@@ -236,6 +287,8 @@ export const api = {
         body: JSON.stringify({ google_auth_session_id: authSessionId }),
       },
     ),
+  getBilling: (projectId: string) =>
+    apiFetch<Billing>(`/projects/${encodeURIComponent(projectId)}/billing`),
   testStoredIntegration: (projectId: string, provider: IntegrationProvider) =>
     apiFetch<TestResult>(
       `/projects/${encodeURIComponent(projectId)}/integrations/${provider}/test`,

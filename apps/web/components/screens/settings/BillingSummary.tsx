@@ -1,65 +1,63 @@
 import type { JSX } from "react";
-import { Button } from "@/components/ui/Button";
-import { BILLING_MOCK, fmtUSD } from "./billing-mock";
+import type { Billing } from "@/lib/api";
+import { cycleLabel, cycleRange, fmtUSD } from "./billing-format";
 
 /**
- * 3-card summary row: cycle spend (with budget bar), plan, next invoice.
+ * 3-card summary row: cycle spend (with projection bar), plan, activity.
  */
-export function BillingSummary(): JSX.Element {
-  const { cycle, plan } = BILLING_MOCK;
-  const budgetPct = Math.min(100, (cycle.mtd / cycle.budget) * 100);
-  const projectedPct = Math.min(100, (cycle.projected / cycle.budget) * 100);
+export function BillingSummary({ billing }: { billing: Billing }): JSX.Element {
+  const { cycle } = billing;
+  // Spent as a share of the projected cycle total (the only real ceiling we
+  // have — no budget is configured anywhere yet).
+  const spentPct =
+    cycle.projected_usd > 0
+      ? Math.min(100, (cycle.mtd_usd / cycle.projected_usd) * 100)
+      : 0;
 
   return (
     <div className="billing-summary">
       <div className="billing-card billing-card-hero">
-        <div className="billing-card-label">This cycle · {cycle.label}</div>
-        <div className="billing-card-value">{fmtUSD(cycle.mtd)}</div>
+        <div className="billing-card-label">
+          This cycle · {cycleLabel(cycle.start)}
+        </div>
+        <div className="billing-card-value">{fmtUSD(cycle.mtd_usd)}</div>
         <div className="billing-card-sub muted">
-          <span className="mono">{cycle.range}</span> · projected{" "}
-          <strong>{fmtUSD(cycle.projected)}</strong> · budget {fmtUSD(cycle.budget)}
+          <span className="mono">{cycleRange(cycle.start, cycle.end)}</span> ·
+          projected <strong>{fmtUSD(cycle.projected_usd)}</strong>
         </div>
         <div className="billing-budget-bar" aria-hidden>
-          <div
-            className="billing-budget-projected"
-            style={{ width: `${projectedPct}%` }}
-          />
-          <div className="billing-budget-mtd" style={{ width: `${budgetPct}%` }} />
+          <div className="billing-budget-projected" style={{ width: "100%" }} />
+          <div className="billing-budget-mtd" style={{ width: `${spentPct}%` }} />
         </div>
         <div className="billing-budget-legend mono muted">
           <span>
-            <span className="dot dot-mtd" /> Spent {budgetPct.toFixed(0)}%
-          </span>
-          <span>
-            <span className="dot dot-projected" /> Projected {projectedPct.toFixed(0)}%
+            <span className="dot dot-mtd" /> Spent {spentPct.toFixed(0)}% of
+            projected
           </span>
           <span className="spacer" />
-          <span>{cycle.daysRemaining} days remaining</span>
+          <span>{cycle.days_remaining} days remaining</span>
         </div>
       </div>
 
       <div className="billing-card">
         <div className="billing-card-label">Plan</div>
-        <div className="billing-card-value-sm">{plan.name}</div>
-        <div className="billing-card-sub muted">{plan.description}</div>
-        <div className="hstack" style={{ marginTop: 10 }}>
-          <Button variant="ghost" size="sm">
-            Manage
-          </Button>
-          <Button variant="ghost" size="sm">
-            Compare plans
-          </Button>
+        <div className="billing-card-value-sm">Bring-your-own-key</div>
+        <div className="billing-card-sub muted">
+          The platform calls OpenAI with its own key — you pay the provider
+          directly, with no markup.
         </div>
       </div>
 
       <div className="billing-card">
-        <div className="billing-card-label">Next invoice</div>
-        <div className="billing-card-value-sm">{cycle.nextInvoice}</div>
-        <div className="billing-card-sub muted">Auto-pay enabled · **** 4242</div>
-        <div className="hstack" style={{ marginTop: 10 }}>
-          <Button variant="ghost" size="sm">
-            View history
-          </Button>
+        <div className="billing-card-label">Activity this cycle</div>
+        <div className="billing-card-value-sm">
+          {billing.invocations_this_cycle} invocation
+          {billing.invocations_this_cycle === 1 ? "" : "s"}
+        </div>
+        <div className="billing-card-sub muted">
+          Across {billing.by_model.length} model
+          {billing.by_model.length === 1 ? "" : "s"} · costs attributed per
+          agent run.
         </div>
       </div>
     </div>

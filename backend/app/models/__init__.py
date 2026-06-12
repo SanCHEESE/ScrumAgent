@@ -5,6 +5,7 @@ from app.models.meeting import Meeting, MeetingArtifact
 from app.models.update import Update
 from app.models.trace import TraceRun, TraceStep
 from app.models.integration import Integration
+from app.models.usage import LlmUsage
 from app.models.project import (
     PendingOAuth,
     Project,
@@ -23,6 +24,7 @@ __all__ = [
     "TraceRun",
     "TraceStep",
     "Integration",
+    "LlmUsage",
     "Project",
     "ProjectAgentSettings",
     "ProjectMember",

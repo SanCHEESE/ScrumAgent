@@ -26,12 +26,32 @@ const PROJECT_FIXTURE = {
  * The OAuth popup is served a tiny page *from the API origin* so its
  * postMessage carries the origin the wizard verifies against.
  */
+function isoIn(hours: number): string {
+  return new Date(Date.now() + hours * 3600_000).toISOString();
+}
+
+function calendarEvent(id: string, startHours: number) {
+  return {
+    id,
+    title: id,
+    start: isoIn(startHours),
+    end: isoIn(startHours + 1),
+    all_day: false,
+    organizer_email: AGENT_EMAIL,
+    attendees: [],
+    meet_link: null,
+    html_link: `https://calendar.google.com/event?eid=${id}`,
+    status: "confirmed",
+  };
+}
+
 function mockBackend(
   context: BrowserContext,
-  opts: { projects?: unknown[] } = {},
+  opts: { projects?: unknown[]; meetings?: unknown[] | { status: number } } = {},
 ): { createBody: () => Record<string, unknown> | null } {
   let createBody: Record<string, unknown> | null = null;
   const projects = opts.projects ?? [];
+  const meetings = opts.meetings ?? [];
 
   context.route(`${API}/projects/integrations/google/start`, (route) =>
     route.fulfill({
@@ -69,6 +89,16 @@ function mockBackend(
   context.route(`${API}/projects/integrations/notion/test`, (route) =>
     route.fulfill({ json: { ok: true, detail: { name: "bot" }, error: null } }),
   );
+  context.route(`${API}/projects/*/meetings*`, (route) => {
+    if (Array.isArray(meetings)) {
+      route.fulfill({ json: meetings });
+    } else {
+      route.fulfill({
+        status: meetings.status,
+        json: { detail: "Google authorization lost" },
+      });
+    }
+  });
   context.route(`${API}/projects`, (route) => {
     if (route.request().method() === "POST") {
       createBody = route.request().postDataJSON();
@@ -116,6 +146,49 @@ test.describe("Projects list", () => {
     await expect(tile.locator(".project-error")).toContainText(
       "reconnect the agent account",
     );
+  });
+
+  test("project card shows live meeting counts from the agent calendar", async ({
+    page,
+    context,
+  }) => {
+    mockBackend(context, {
+      projects: [PROJECT_FIXTURE],
+      // two upcoming, one past
+      meetings: [
+        calendarEvent("evt-up-1", 24),
+        calendarEvent("evt-up-2", 48),
+        calendarEvent("evt-past", -48),
+      ],
+    });
+    await page.goto("/projects");
+
+    const tile = page.locator(".project-tile", { hasText: "E2E Test Squad" });
+    const stat = (label: string) =>
+      tile
+        .locator(".project-tile-stats > div", { hasText: label })
+        .locator(".pst-num");
+    await expect(stat("meetings")).toHaveText("3");
+    await expect(stat("pending")).toHaveText("2");
+  });
+
+  test("meetings fetch failure keeps the card rendered with zero counts", async ({
+    page,
+    context,
+  }) => {
+    mockBackend(context, {
+      projects: [PROJECT_FIXTURE],
+      meetings: { status: 409 },
+    });
+    await page.goto("/projects");
+
+    const tile = page.locator(".project-tile", { hasText: "E2E Test Squad" });
+    await expect(tile).toBeVisible();
+    await expect(
+      tile
+        .locator(".project-tile-stats > div", { hasText: "meetings" })
+        .locator(".pst-num"),
+    ).toHaveText("0");
   });
 
   test("Add project tile routes to wizard", async ({ page, context }) => {

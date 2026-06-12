@@ -6,8 +6,8 @@ import { ApiError, api, type ProjectOut } from "@/lib/api";
 import type { Project } from "@/lib/types";
 import { ProjectsList } from "./ProjectsList";
 
-/** Map a backend project onto the view shape the grid renders. Sync stats are
- *  not tracked yet, so they default to zero; status reflects the Google grant. */
+/** Map a backend project onto the view shape the grid renders. Counts start at
+ *  zero and are filled in from the live calendar fetch. */
 function toView(p: ProjectOut): Project {
   return {
     id: p.id,
@@ -21,19 +21,59 @@ function toView(p: ProjectOut): Project {
   };
 }
 
-/** Client wrapper that loads the caller's real projects (owned or member of). */
+function startMs(start: string | null): number {
+  if (!start) return 0;
+  return new Date(start.length === 10 ? `${start}T00:00:00` : start).getTime();
+}
+
+/** Client wrapper that loads the caller's real projects (owned or member of)
+ *  and per-project live calendar counts: meetings = events in the default
+ *  window, pending = the upcoming subset. A failed calendar fetch (revoked
+ *  grant, upstream error) leaves that card's counts at zero. */
 export function ProjectsListLive(): JSX.Element {
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    api
-      .listProjects()
-      .then((rows) => {
-        if (active) setProjects(rows.map(toView));
-      })
-      .catch((e) => {
+    (async () => {
+      try {
+        const rows = await api.listProjects();
+        if (!active) return;
+        setProjects(rows.map(toView));
+
+        const now = Date.now();
+        const counts = await Promise.allSettled(
+          rows.map(async (p) => {
+            const events = await api.listProjectMeetings(p.id);
+            return {
+              id: p.id,
+              meetings: events.length,
+              pending: events.filter((e) => startMs(e.start) >= now).length,
+            };
+          }),
+        );
+        if (!active) return;
+        const byId = new Map(
+          counts
+            .filter(
+              (
+                r,
+              ): r is PromiseFulfilledResult<{
+                id: string;
+                meetings: number;
+                pending: number;
+              }> => r.status === "fulfilled",
+            )
+            .map((r) => [r.value.id, r.value]),
+        );
+        setProjects((prev) =>
+          (prev ?? []).map((p) => {
+            const c = byId.get(p.id);
+            return c ? { ...p, meetings: c.meetings, pending: c.pending } : p;
+          }),
+        );
+      } catch (e) {
         if (!active) return;
         // 401 → the API client is already redirecting to /login; don't flash a
         // dead "Invalid or expired token" on the way out.
@@ -41,7 +81,8 @@ export function ProjectsListLive(): JSX.Element {
         setError(
           e instanceof ApiError ? e.message : "Could not load projects.",
         );
-      });
+      }
+    })();
     return () => {
       active = false;
     };

@@ -7,7 +7,7 @@ import type { Project } from "@/lib/types";
 import { ProjectsList } from "./ProjectsList";
 
 /** Map a backend project onto the view shape the grid renders. Sync stats are
- *  not tracked yet, so they default to zero / never-synced. */
+ *  not tracked yet, so they default to zero; status reflects the Google grant. */
 function toView(p: ProjectOut): Project {
   return {
     id: p.id,
@@ -15,7 +15,7 @@ function toView(p: ProjectOut): Project {
     email: p.agent_email,
     description: p.description ?? "",
     lastSync: null,
-    status: "never_synced",
+    status: p.google_connected ? "active" : "error",
     meetings: 0,
     pending: 0,
   };

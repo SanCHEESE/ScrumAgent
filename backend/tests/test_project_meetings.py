@@ -181,6 +181,29 @@ def test_meetings_409_when_grant_revoked(client, db_session, fake_calendar):
     assert "reconnect" in resp.json()["detail"]
 
 
+def test_revoked_grant_marks_project_disconnected(client, db_session, fake_calendar):
+    user = _make_user(db_session)
+    project = _make_project(db_session, user)
+    fake_calendar.error = GoogleAuthRevokedError("revoked")
+    client.get(f"/projects/{project.id}/meetings", headers=_auth(user.id))
+    db_session.refresh(project)
+    assert project.google_connected is False
+    # GET /projects now reports the broken grant so the UI can show Error.
+    resp = client.get("/projects", headers=_auth(user.id))
+    assert resp.json()[0]["google_connected"] is False
+
+
+def test_upstream_failure_does_not_mark_project_disconnected(
+    client, db_session, fake_calendar
+):
+    user = _make_user(db_session)
+    project = _make_project(db_session, user)
+    fake_calendar.error = GoogleCalendarError("boom")
+    client.get(f"/projects/{project.id}/meetings", headers=_auth(user.id))
+    db_session.refresh(project)
+    assert project.google_connected is True
+
+
 def test_meetings_502_on_upstream_failure(client, db_session, fake_calendar):
     user = _make_user(db_session)
     project = _make_project(db_session, user)

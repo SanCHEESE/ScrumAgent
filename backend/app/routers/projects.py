@@ -360,6 +360,9 @@ async def list_project_meetings(
             time_max=now + timedelta(days=days_forward),
         )
     except GoogleAuthRevokedError as exc:
+        # Persist the broken grant so project listings can surface it.
+        project.google_connected = False
+        db.commit()
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             "Google authorization expired or was revoked — reconnect the agent account",

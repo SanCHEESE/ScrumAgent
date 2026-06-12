@@ -94,6 +94,30 @@ test.describe("Projects list", () => {
     await expect(page.locator(".project-tile-add")).toBeVisible();
   });
 
+  test("connected project shows Active pill", async ({ page, context }) => {
+    mockBackend(context, { projects: [PROJECT_FIXTURE] });
+    await page.goto("/projects");
+
+    const tile = page.locator(".project-tile", { hasText: "E2E Test Squad" });
+    await expect(tile.locator(".badge")).toHaveText("Active");
+  });
+
+  test("project with broken Google grant shows Error pill and reconnect hint", async ({
+    page,
+    context,
+  }) => {
+    mockBackend(context, {
+      projects: [{ ...PROJECT_FIXTURE, google_connected: false }],
+    });
+    await page.goto("/projects");
+
+    const tile = page.locator(".project-tile", { hasText: "E2E Test Squad" });
+    await expect(tile.locator(".badge")).toHaveText("Error");
+    await expect(tile.locator(".project-error")).toContainText(
+      "reconnect the agent account",
+    );
+  });
+
   test("Add project tile routes to wizard", async ({ page, context }) => {
     mockBackend(context);
     await page.goto("/projects");

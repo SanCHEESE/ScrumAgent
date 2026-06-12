@@ -24,6 +24,7 @@ interface PillSpec {
 
 const STATUS_MAP: Record<string, PillSpec> = {
   done: { cls: "badge-paid", label: "Done" },
+  active: { cls: "badge-paid", label: "Active" },
   analyzing: { cls: "badge-brand", label: "Analyzing", dot: true },
   transcribing: { cls: "badge-draft", label: "Transcribing", dot: true },
   error: { cls: "badge-overdue", label: "Error" },

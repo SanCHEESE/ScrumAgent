@@ -4,8 +4,8 @@ import { Icon } from "@/components/ui/Icon";
 import { StatusPill } from "@/components/ui/StatusPill";
 import type { Project, ProjectStatus } from "@/lib/types";
 
-const PILL_STATUS: Record<ProjectStatus, "done" | "error" | "pending"> = {
-  active: "done",
+const PILL_STATUS: Record<ProjectStatus, "active" | "error" | "pending"> = {
+  active: "active",
   error: "error",
   never_synced: "pending",
 };
@@ -57,7 +57,7 @@ export function ProjectCard({
       {project.status === "error" && (
         <div className="project-error">
           <Icon name="alert" size={12} />
-          Jira sync failed — token expired
+          Google authorization lost — reconnect the agent account
         </div>
       )}
     </Link>

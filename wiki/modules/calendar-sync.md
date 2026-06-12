@@ -30,7 +30,10 @@ at provisioning ([[modules/project-provisioning]]) is used directly:
   normalized `CalendarMeetingOut` rows (title, start/end incl. all-day, organizer,
   attendees, Meet link from `hangoutLink`/`conferenceData`, `htmlLink`); cancelled events
   dropped. `409` when the grant is missing/revoked ("reconnect the agent account"),
-  `502` on other upstream failures.
+  `502` on other upstream failures. A revoked grant also persists
+  `project.google_connected = False`, so `GET /projects` reflects the broken grant and
+  the Projects grid pill shows **Error** (Active when connected — was hardcoded Pending,
+  ScrumAgent-4rb).
 - **Frontend** — `/meetings` (`apps/web/app/(shell)/meetings/page.tsx`) now lists *live*
   events merged across all of the user's projects (mock `MEETINGS` gone from this page):
   All / Upcoming / Past tabs, search, attendee initials avatars, Scheduled/Past pills,

@@ -142,7 +142,16 @@
       "Bash(sqlite3 /Users/abochkarev/Documents/projects/ScrumAgent/backend/.local/dev.db \"select * from project_agent_settings;\" \".tables\")",
       "Bash(sqlite3 /Users/abochkarev/Documents/projects/ScrumAgent/backend/.local/dev.db \"select response_style, capture_screenshots from project_agent_settings;\")",
       "Bash(sed -n 40,120p meetings.spec.ts)",
-      "Bash(sed -n 30,120p settings.spec.ts)"
+      "Bash(sed -n 30,120p settings.spec.ts)",
+      "Bash(.venv/bin/python -m pytest tests/test_project_integrations.py -q)",
+      "Bash(rtk curl *)",
+      "Bash(DATABASE_URL=sqlite:// PYTHONPATH=. .venv/bin/python -m pytest tests/test_project_billing.py -x -q)",
+      "Bash(DATABASE_URL=sqlite:// PYTHONPATH=. .venv/bin/python -m pytest tests/test_project_billing.py -q)",
+      "Bash(DATABASE_URL=sqlite:// PYTHONPATH=. .venv/bin/python -m pytest -q)",
+      "Bash(DATABASE_URL=sqlite:////Users/abochkarev/Documents/projects/ScrumAgent/backend/.local/dev.db PYTHONPATH=. .venv/bin/python .local/_seed_billing.py)",
+      "Bash(kill 31603)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/docs)",
+      "Bash(DATABASE_URL=sqlite:////Users/abochkarev/Documents/projects/ScrumAgent/backend/.local/dev.db PYTHONPATH=. .venv/bin/python .local/_mint_dev_token.py)"
     ]
   }
 }

@@ -35,3 +35,4 @@ venv/
 .obsidian-git-data
 .trash/
 .DS_Store
+backend/.local/uvicorn.log

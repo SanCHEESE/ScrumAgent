@@ -1,14 +1,14 @@
 ---
 type: meta
 title: "Hot Cache"
-updated: 2026-06-12T18:00:00
+updated: 2026-06-15T05:45:00
 tags: [meta, hot-cache]
 ---
 
 # Recent Context
 
 ## Last Updated
-2026-06-12. **Live /settings Billing tab (`ScrumAgent-307`).** Billing is no longer mock. New `llm_usage` table (`app/models/usage.py`): one row per provider call — project_id, `run_id` (groups one agent invocation), `context` label, provider/model/`kind` (llm|stt|embed)/`category` (orchestrator|subagents|whisper|embeddings|storage), input/output units (M tok or STT min), `cost_usd`. **The LLM gateway (`wqj`) must write these rows**; until then real projects show honest zeros/empty states. New member-only `GET /projects/{id}/billing` aggregates the current calendar month in Python: MTD + linear projection (mtd/days_elapsed×days_in_month), per-category costs, per-model usage with 10-day daily sparkline, 6 most recent run-grouped invocations. Frontend `BillingSection` rewritten: project picker, live fetch, empty states; `ApiKeysTable` + `billing-mock.ts` deleted (no budget config exists → hero bar is spent-vs-projected, no fake invoices/keys). Dev seed: `backend/.local/_seed_billing.py`. 131 pytest green (9 new), 58 Playwright green, tsc clean, verified live against seeded dev data.
+2026-06-15. **Live /settings Members tab (`ScrumAgent-l5p`).** Reviewed project settings: Agent behavior (`7qy`), Integrations (`d9q`), and Billing (`307`) were already live. Members is now wired to `GET /projects` with a project picker and real `ProjectOut.members`; no hardcoded Alice/Bob list. Remaining mock-only tabs are tracked as `ScrumAgent-sxm` (Knowledge base) and `ScrumAgent-0r1` (Notifications). `ScrumAgent-n60` tracks the invalid `.gitignore` glob that makes `rg` print parse errors.
 
 ## Key Recent Facts
 - Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker Compose for Municorn (`@municorn.com`); second target = single GCE VM.
@@ -17,6 +17,7 @@ tags: [meta, hot-cache]
 - Canonical plan: [[sources/mvp-v2-plan]]. Tracking: `bd`. TDD mandatory.
 
 ## What just shipped (same day, newest first)
+- **Members settings** (`l5p`): live project picker + real member table from existing project API; focused settings e2e added.
 - **Billing settings** (`307`): see above. Playwright `mockSettingsApi` now installs default routes for all live tabs (billing/integrations) so nav-only tests don't leak requests to a real backend.
 - **Integrations settings** (`d9q`): real per-project status + configure/test endpoints, Google reconnect via staged `PendingOAuth`. See [[modules/project-provisioning]].
 - **Per-project agent settings** (`7qy`): `project_agent_settings` + GET/PUT; picker + debounced autosave.

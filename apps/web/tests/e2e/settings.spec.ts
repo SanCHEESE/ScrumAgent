@@ -16,11 +16,36 @@ const PROJECT_A = {
   jira_project_key: null,
   notion_section_url: null,
   notion_page_id: null,
-  members: [],
+  members: [
+    {
+      user_id: 1,
+      email: "daria@municorn.com",
+      name: "Daria Orlov",
+      role: "admin",
+    },
+    {
+      user_id: 2,
+      email: "max@municorn.com",
+      name: null,
+      role: "member",
+    },
+  ],
   created_at: "2026-06-01T00:00:00Z",
 };
 
-const PROJECT_B = { ...PROJECT_A, id: "p-2", name: "eSIM" };
+const PROJECT_B = {
+  ...PROJECT_A,
+  id: "p-2",
+  name: "eSIM",
+  members: [
+    {
+      user_id: 3,
+      email: "ken@municorn.com",
+      name: "Ken Sato",
+      role: "member",
+    },
+  ],
+};
 
 const DEFAULT_SETTINGS = {
   auto_join_meetings: true,
@@ -216,6 +241,27 @@ test.describe("Settings hub", () => {
     await expect(
       page.getByText("No agent invocations recorded this cycle yet."),
     ).toBeVisible();
+  });
+
+  test("Members renders the selected project's live members", async ({ page }) => {
+    await mockSettingsApi(page, {});
+    await page.goto("/settings");
+    await page
+      .locator(".settings-nav-item")
+      .filter({ hasText: "Members" })
+      .click();
+
+    await expect(page.getByLabel("Project")).toHaveValue("p-1");
+    await expect(page.locator(".members-table tbody tr")).toHaveCount(2);
+    await expect(page.locator(".members-table")).toContainText("Daria Orlov");
+    await expect(page.locator(".members-table")).toContainText("max@municorn.com");
+    await expect(page.locator(".members-table")).toContainText("Admin");
+    await expect(page.locator(".members-table")).not.toContainText("Ken Sato");
+
+    await page.getByLabel("Project").selectOption("p-2");
+    await expect(page.locator(".members-table tbody tr")).toHaveCount(1);
+    await expect(page.locator(".members-table")).toContainText("Ken Sato");
+    await expect(page.locator(".members-table")).not.toContainText("Daria Orlov");
   });
 });
 

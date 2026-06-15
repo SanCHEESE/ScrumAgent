@@ -2,13 +2,25 @@
 type: meta
 title: "Wiki Log"
 created: 2026-05-10
-updated: 2026-06-12
+updated: 2026-06-15
 tags: [meta, log]
 ---
 
 # Wiki Log
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
+
+## 2026-06-15 — Live /settings Members tab (ScrumAgent-l5p)
+
+Reviewed the current project settings surface. Agent behavior (`ScrumAgent-7qy`),
+Integrations (`ScrumAgent-d9q`), and Billing (`ScrumAgent-307`) were already live.
+`/settings → Members` was still hardcoded mock data; it now loads real projects
+through the existing API, lets the user pick a project, and renders that
+project's returned member list with names, emails, roles, and honest empty/error
+states. Added a focused Playwright regression for project switching. Remaining
+mock-only settings tabs were filed separately: Knowledge base (`ScrumAgent-sxm`)
+and Notifications (`ScrumAgent-0r1`). Also filed `ScrumAgent-n60` for the invalid
+`.gitignore` pattern that makes `rg` print parse errors.
 
 ## 2026-06-12 — Live /settings Billing tab (ScrumAgent-307)
 

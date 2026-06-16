@@ -28,7 +28,7 @@ wizard ([[domains/frontend]]). Shipped in `ScrumAgent-lb9`.
 ## Data model
 
 - **`Project`** — owner, name, description, color, `agent_email`, `google_connected`, Jira fields (`jira_site_url`/`jira_user_email`/`jira_project_key`), Notion fields (`notion_section_url`/`notion_page_id`).
-- **`ProjectMember`** — composite PK `(project_id, user_id)`, `role` ∈ {`member`,`admin`}. The owner is inserted as `admin`; a member row is what makes a project show up in someone's list.
+- **`ProjectMember`** — composite PK `(project_id, user_id)`, `role` ∈ {`viewer`,`member`,`admin`}. The owner is inserted as `admin`; a member row is what makes a project show up in someone's list.
 - **`ProjectCredential`** — 1:1 with `Project`; `google_refresh_token`/`jira_api_token`/`notion_token`, each `EncryptedString` (Fernet at rest). Secrets never live on `Project` and are never returned by any endpoint.
 - **`PendingOAuth`** — one-shot bridge: the agent Google grant captured *before* the project row exists, consumed (and deleted) at create.
 
@@ -55,6 +55,12 @@ agent authorizes its **own** account. See [[decisions/2026-06-02-agent-google-of
 4. `POST /projects` requires a valid, unconsumed `auth_session_id` owned by the caller →
    moves the refresh token into `ProjectCredential`, deletes the `PendingOAuth`. Missing
    → `400` (Google is a hard gate).
+5. After the popup grant but before project creation, the wizard can call
+   `GET /projects/integrations/google/meeting-participants?auth_session_id=...`.
+   The backend lists the pending agent calendar, dedupes organizer/attendee emails,
+   skips cancelled events and the agent account itself, and returns lightweight
+   suggestions with `event_count`. The frontend preloads this while the user is on
+   Jira/Notion steps.
 
 ## Jira / Notion validation
 
@@ -71,9 +77,10 @@ integrations are otherwise skippable. The Notion section link is parsed to a pag
 |---|---|
 | `POST /projects/integrations/google/start` | begin agent offline-OAuth |
 | `GET /projects/integrations/google/callback` | exchange code → `PendingOAuth` (popup `postMessage`) |
+| `GET /projects/integrations/google/meeting-participants` | preview deduped organizer/attendee emails from the pending Google grant |
 | `POST /projects/integrations/jira/test` | validate a Jira site + token |
 | `POST /projects/integrations/notion/test` | validate a Notion token |
-| `POST /projects` | provision (Google required; Jira/Notion validated if present) |
+| `POST /projects` | provision (Google required; Jira/Notion validated if present; `members[]` may set `admin`/`member`/`viewer`) |
 | `GET /projects` | projects the caller is a member of (owner included) |
 | `GET /projects/{id}` | detail; `404` for non-members |
 | `GET /users/directory` | selectable members |
@@ -129,4 +136,8 @@ category label/colour map in `billing-format.ts`. `ApiKeysTable` and
 - [[modules/auth]] — reuses the Google OAuth client + Fernet crypto + JWT.
 - [[domains/backend]] §Persistence — portability conventions these models follow.
 - [[entities/google-workspace]], [[entities/jira]], [[entities/notion]].
-- Members select from existing [[modules/auth]] users only (no email invites yet — `bd` follow-up).
+- Project creation member suggestions now come from signed-in users whose emails
+  appear in pending Google meeting participants, plus fixed fallbacks
+  `dev@municorn.com` and `a.bochkarev@municorn.com`; arbitrary directory users
+  are no longer suggested. Members still select from existing [[modules/auth]]
+  users only (no email invites yet — `bd` follow-up).

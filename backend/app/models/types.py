@@ -81,6 +81,7 @@ class RunStatus(str, enum.Enum):
 
 
 class ProjectRole(str, enum.Enum):
+    viewer = "viewer"
     member = "member"
     admin = "admin"
 

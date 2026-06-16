@@ -10,6 +10,27 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-16 — Project creation meeting participant suggestions and roles (ScrumAgent-eu3)
+
+The Add Project wizard now preloads meeting participant suggestions right after
+the Google Workspace agent account is authorized. While the user is on Jira and
+Notion steps, the frontend calls the new pending-session endpoint
+`GET /projects/integrations/google/meeting-participants?auth_session_id=...`,
+then step 5 shows only signed-in users whose emails appeared in organizer or
+attendee lists, plus the fixed fallback accounts `dev@municorn.com` and
+`a.bochkarev@municorn.com`. Arbitrary directory users are no longer suggested.
+
+Project members can now be created with roles. `ProjectRole` is
+`viewer`/`member`/`admin`, the owner remains `admin`, and `POST /projects`
+accepts role-aware `members[]` while keeping legacy `member_user_ids` as
+`member`. The step 5 UI lets the creator choose a role per selected candidate.
+
+Verification: watched the new backend tests fail on missing endpoint/role-aware
+payloads and the e2e fail because `random@municorn.com` was still suggested.
+After implementation, `backend/.venv/bin/pytest tests/test_projects_api.py`,
+`npm --prefix apps/web run typecheck`, and `npm --prefix apps/web run test:e2e
+-- projects.spec.ts` are green.
+
 ## 2026-06-16 — Upload recording disabled on Meetings (ScrumAgent-dik)
 
 The `/meetings` header still shows the **Upload recording** affordance, but it

@@ -1,6 +1,7 @@
 from app.models.types import (
     ArtifactType,
     MessageRole,
+    ProjectRole,
     RunStatus,
     StepKind,
     UpdateStatus,
@@ -28,3 +29,4 @@ def test_enum_values():
     }
     assert {k.value for k in StepKind} == {"llm", "tool", "handoff"}
     assert {s.value for s in RunStatus} == {"running", "completed", "failed"}
+    assert {r.value for r in ProjectRole} == {"viewer", "member", "admin"}

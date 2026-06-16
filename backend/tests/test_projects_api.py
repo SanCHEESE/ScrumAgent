@@ -12,6 +12,7 @@ from sqlalchemy import text
 
 from app import deps
 from app.config import Settings
+from app.google_calendar import GoogleCalendarError
 from app.integrations import ValidationResult
 from app.main import app
 from app.models import PendingOAuth, Project, ProjectMember, User
@@ -87,13 +88,56 @@ class FakeValidators:
         return self._result
 
 
+class FakeCalendar:
+    def __init__(self) -> None:
+        self.events: list[dict] = [
+            {
+                "id": "evt-1",
+                "status": "confirmed",
+                "organizer": {"email": "lead@municorn.com", "displayName": "Lead"},
+                "attendees": [
+                    {"email": "bob@municorn.com", "displayName": "Bob"},
+                    {"email": "carol@municorn.com", "displayName": "Carol"},
+                    {"email": "telecom.scrum.agent@municorn.com", "displayName": "Agent"},
+                ],
+            },
+            {
+                "id": "evt-2",
+                "status": "confirmed",
+                "attendees": [
+                    {"email": "bob@municorn.com", "displayName": "Robert"},
+                    {"email": "outsider@example.com", "displayName": "External"},
+                ],
+            },
+            {
+                "id": "evt-3",
+                "status": "cancelled",
+                "attendees": [{"email": "cancelled@municorn.com"}],
+            },
+        ]
+        self.error: Exception | None = None
+        self.last_refresh_token: str | None = None
+
+    async def list_events(self, refresh_token, *, time_min, time_max, max_results=250):
+        self.last_refresh_token = refresh_token
+        if self.error is not None:
+            raise self.error
+        return list(self.events)
+
+
 @pytest.fixture
-def client(db_session):
+def fake_calendar() -> FakeCalendar:
+    return FakeCalendar()
+
+
+@pytest.fixture
+def client(db_session, fake_calendar):
     def _ov_db():
         yield db_session
 
     app.dependency_overrides[deps.get_settings] = _settings
     app.dependency_overrides[deps.get_db] = _ov_db
+    app.dependency_overrides[deps.get_google_calendar] = lambda: fake_calendar
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -116,6 +160,56 @@ def test_users_directory_lists_users(client, db_session):
     emails = {u["email"] for u in resp.json()}
     assert emails == {"alice@municorn.com", "bob@municorn.com"}
     assert all(set(u) == {"id", "email", "name"} for u in resp.json())  # no secrets
+
+
+# --- Google pending-session meeting participant suggestions ---
+
+def test_google_meeting_participants_require_auth(client):
+    resp = client.get(
+        "/projects/integrations/google/meeting-participants?auth_session_id=sess-1"
+    )
+    assert resp.status_code == 401
+
+
+def test_google_meeting_participants_from_pending_session(client, db_session, fake_calendar):
+    owner = _user(db_session, "alice@municorn.com", "sub-a")
+    sid = _seed_pending(db_session, owner.id)
+    resp = client.get(
+        f"/projects/integrations/google/meeting-participants?auth_session_id={sid}",
+        headers=_auth(owner.id),
+    )
+    assert resp.status_code == 200
+    assert fake_calendar.last_refresh_token == "1//agent-refresh"
+    assert resp.json() == [
+        {"email": "lead@municorn.com", "display_name": "Lead", "event_count": 1},
+        {"email": "bob@municorn.com", "display_name": "Bob", "event_count": 2},
+        {"email": "carol@municorn.com", "display_name": "Carol", "event_count": 1},
+        {"email": "outsider@example.com", "display_name": "External", "event_count": 1},
+    ]
+
+
+def test_google_meeting_participants_reject_other_users_session(client, db_session):
+    owner = _user(db_session, "alice@municorn.com", "sub-a")
+    bob = _user(db_session, "bob@municorn.com", "sub-b")
+    sid = _seed_pending(db_session, owner.id)
+    resp = client.get(
+        f"/projects/integrations/google/meeting-participants?auth_session_id={sid}",
+        headers=_auth(bob.id),
+    )
+    assert resp.status_code == 400
+
+
+def test_google_meeting_participants_reports_upstream_failure(
+    client, db_session, fake_calendar
+):
+    owner = _user(db_session, "alice@municorn.com", "sub-a")
+    sid = _seed_pending(db_session, owner.id)
+    fake_calendar.error = GoogleCalendarError("boom")
+    resp = client.get(
+        f"/projects/integrations/google/meeting-participants?auth_session_id={sid}",
+        headers=_auth(owner.id),
+    )
+    assert resp.status_code == 502
 
 
 # --- POST /projects ---
@@ -180,6 +274,48 @@ def test_create_project_with_members_appears_in_their_list(client, db_session):
     # the project shows up in Bob's list
     bob_projects = client.get("/projects", headers=_auth(bob.id)).json()
     assert [p["name"] for p in bob_projects] == ["Platform"]
+
+
+def test_create_project_with_member_roles(client, db_session):
+    owner = _user(db_session, "alice@municorn.com", "sub-a")
+    bob = _user(db_session, "bob@municorn.com", "sub-b")
+    carol = _user(db_session, "carol@municorn.com", "sub-c")
+    sid = _seed_pending(db_session, owner.id)
+    resp = client.post(
+        "/projects",
+        headers=_auth(owner.id),
+        json={
+            "name": "Platform",
+            "google_auth_session_id": sid,
+            "members": [
+                {"user_id": bob.id, "role": "viewer"},
+                {"user_id": carol.id, "role": "admin"},
+            ],
+        },
+    )
+    assert resp.status_code == 201
+    roles = {m["email"]: m["role"] for m in resp.json()["members"]}
+    assert roles == {
+        "alice@municorn.com": "admin",
+        "bob@municorn.com": "viewer",
+        "carol@municorn.com": "admin",
+    }
+
+
+def test_create_project_rejects_invalid_member_role(client, db_session):
+    owner = _user(db_session, "alice@municorn.com", "sub-a")
+    bob = _user(db_session, "bob@municorn.com", "sub-b")
+    sid = _seed_pending(db_session, owner.id)
+    resp = client.post(
+        "/projects",
+        headers=_auth(owner.id),
+        json={
+            "name": "Platform",
+            "google_auth_session_id": sid,
+            "members": [{"user_id": bob.id, "role": "owner"}],
+        },
+    )
+    assert resp.status_code == 422
 
 
 def test_create_project_rejects_invalid_jira_token(client, db_session):

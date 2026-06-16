@@ -76,6 +76,11 @@ class NotionConfig(BaseModel):
     section_url: str
 
 
+class ProjectMemberCreate(BaseModel):
+    user_id: int
+    role: ProjectRole = ProjectRole.member
+
+
 class ProjectCreate(BaseModel):
     name: str = Field(min_length=1)
     description: str | None = None
@@ -85,6 +90,8 @@ class ProjectCreate(BaseModel):
     google_auth_session_id: str
     jira: JiraConfig | None = None
     notion: NotionConfig | None = None
+    members: list[ProjectMemberCreate] = Field(default_factory=list)
+    # Backward-compatible field used by the first project-creation slice.
     member_user_ids: list[int] = Field(default_factory=list)
 
 
@@ -109,6 +116,12 @@ class ProjectOut(BaseModel):
     notion_page_id: str | None
     members: list[MemberOut]
     created_at: datetime
+
+
+class MeetingParticipantSuggestionOut(BaseModel):
+    email: str
+    display_name: str | None
+    event_count: int
 
 
 @router.post("/integrations/google/start")
@@ -220,6 +233,49 @@ async def notion_test(
     return {"ok": result.ok, "detail": result.detail, "error": result.error}
 
 
+@router.get(
+    "/integrations/google/meeting-participants",
+    response_model=list[MeetingParticipantSuggestionOut],
+)
+async def google_meeting_participants(
+    auth_session_id: str,
+    days_back: int = Query(30, ge=0, le=365),
+    days_forward: int = Query(60, ge=0, le=365),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    calendar: GoogleCalendarClient = Depends(get_google_calendar),
+) -> list[MeetingParticipantSuggestionOut]:
+    pending = db.get(PendingOAuth, auth_session_id)
+    if (
+        pending is None
+        or pending.provider != GOOGLE_PROVIDER
+        or pending.user_id != user.id
+        or not pending.refresh_token
+    ):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Valid Google authorization is required"
+        )
+
+    now = datetime.now(timezone.utc)
+    try:
+        events = await calendar.list_events(
+            pending.refresh_token,
+            time_min=now - timedelta(days=days_back),
+            time_max=now + timedelta(days=days_forward),
+        )
+    except GoogleAuthRevokedError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Google authorization expired or was revoked — reconnect the agent account",
+        ) from exc
+    except GoogleCalendarError as exc:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY, "Could not reach Google Calendar"
+        ) from exc
+
+    return _participant_suggestions(events, pending.account_email)
+
+
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=ProjectOut)
 async def create_project(
     req: ProjectCreate,
@@ -259,10 +315,19 @@ async def create_project(
                 f"Notion token did not validate: {result.error}",
             )
 
-    member_ids = [uid for uid in dict.fromkeys(req.member_user_ids) if uid != user.id]
-    if member_ids:
-        found = {u.id for u in db.query(User).filter(User.id.in_(member_ids)).all()}
-        missing = sorted(set(member_ids) - found)
+    member_roles: dict[int, ProjectRole] = {}
+    for uid in req.member_user_ids:
+        if uid != user.id:
+            member_roles.setdefault(uid, ProjectRole.member)
+    for member in req.members:
+        if member.user_id != user.id:
+            member_roles[member.user_id] = member.role
+
+    if member_roles:
+        found = {
+            u.id for u in db.query(User).filter(User.id.in_(member_roles.keys())).all()
+        }
+        missing = sorted(set(member_roles) - found)
         if missing:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_CONTENT, f"Unknown member(s): {missing}"
@@ -289,8 +354,8 @@ async def create_project(
         notion_token=req.notion.token if req.notion else None,
     )
     project.members.append(ProjectMember(user_id=user.id, role=ProjectRole.admin))
-    for uid in member_ids:
-        project.members.append(ProjectMember(user_id=uid, role=ProjectRole.member))
+    for uid, role in member_roles.items():
+        project.members.append(ProjectMember(user_id=uid, role=role))
 
     db.add(project)
     db.delete(pending)  # one-shot grant consumed
@@ -417,6 +482,40 @@ def _event_to_meeting(event: dict) -> CalendarMeetingOut:
         html_link=event.get("htmlLink"),
         status=event.get("status"),
     )
+
+
+def _participant_suggestions(
+    events: list[dict], agent_email: str
+) -> list[MeetingParticipantSuggestionOut]:
+    agent = agent_email.lower()
+    seen: dict[str, dict] = {}
+    for event in events:
+        if event.get("status") == "cancelled":
+            continue
+        people = []
+        organizer = event.get("organizer") or {}
+        if organizer:
+            people.append(organizer)
+        people.extend(event.get("attendees") or [])
+        event_emails: set[str] = set()
+        for person in people:
+            email = str(person.get("email") or "").strip().lower()
+            if not email or email == agent or email in event_emails:
+                continue
+            event_emails.add(email)
+            current = seen.setdefault(
+                email,
+                {
+                    "email": email,
+                    "display_name": person.get("displayName"),
+                    "event_count": 0,
+                },
+            )
+            current["event_count"] += 1
+            if not current["display_name"] and person.get("displayName"):
+                current["display_name"] = person.get("displayName")
+
+    return [MeetingParticipantSuggestionOut(**entry) for entry in seen.values()]
 
 
 class AgentSettingsModel(BaseModel):

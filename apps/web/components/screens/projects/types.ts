@@ -1,5 +1,7 @@
 // Shared types for the Add Project wizard.
 
+import type { ProjectRole } from "@/lib/api";
+
 /** Suggested default for the agent's Google Workspace account. */
 export const DEFAULT_AGENT_EMAIL = "telecom.scrum.agent@municorn.com";
 
@@ -24,6 +26,7 @@ export interface WizardFormData {
   notionSectionUrl: string;
   // Step 5 — Select team members
   selectedUserIds: number[];
+  selectedMemberRoles: Record<number, ProjectRole>;
 }
 
 export const COLOR_SWATCHES: readonly string[] = [
@@ -47,4 +50,5 @@ export const INITIAL_FORM: WizardFormData = {
   notionToken: "",
   notionSectionUrl: "",
   selectedUserIds: [],
+  selectedMemberRoles: {},
 };

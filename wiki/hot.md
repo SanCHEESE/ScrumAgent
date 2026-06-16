@@ -8,7 +8,8 @@ tags: [meta, hot-cache]
 # Recent Context
 
 ## Last Updated
-2026-06-16. **Shell and Home live-data polish (`ScrumAgent-dik`,
+2026-06-16. **Project creation participant suggestions + roles (`ScrumAgent-eu3`)
+and Shell/Home live-data polish (`ScrumAgent-dik`,
 `ScrumAgent-qe6`,
 `ScrumAgent-fv7`, `ScrumAgent-cv3`, `ScrumAgent-iie`, `ScrumAgent-qiw`,
 `ScrumAgent-ec9`, `ScrumAgent-9we`).** The sidebar project
@@ -22,7 +23,12 @@ stale hardcoded badge. The sidebar footer user row no longer opens a popover;
 the chevron slot is a direct Sign out button. The Kabanchik mark is now a
 custom SVG running-boar silhouette and favicon instead of an emoji placeholder.
 The Meetings header keeps the future Upload recording CTA visible but disabled
-until an upload/import pipeline exists.
+until an upload/import pipeline exists. In Add Project, step 5 now preloads
+meeting participant suggestions from the pending Google grant while the user is
+on Jira/Notion steps, filters out arbitrary directory users, keeps only matching
+signed-in meeting participants plus `dev@municorn.com` and
+`a.bochkarev@municorn.com`, and sends selected roles (`admin`/`member`/`viewer`)
+in `POST /projects`.
 
 ## Key Recent Facts
 - Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker
@@ -34,6 +40,10 @@ until an upload/import pipeline exists.
 - Canonical plan: [[sources/mvp-v2-plan]]. Tracking: `bd`. TDD mandatory.
 
 ## What just shipped (same day, newest first)
+- **Project creation roles + participant suggestions** (`eu3`): new pending
+  Google endpoint previews organizer/attendee emails before project creation;
+  Step 5 shows only signed-in meeting participants plus fixed fallback accounts,
+  and selected users get role dropdowns (`viewer`/`member`/`admin`).
 - **Upload recording disabled** (`dik`): `/meetings` still shows the Upload
   recording CTA, but the button is disabled until the recording upload/import
   flow exists.
@@ -87,5 +97,8 @@ until an upload/import pipeline exists.
   pending (`ScrumAgent-soe`). `PendingOAuth` rows still never expire.
 - `ScrumAgent-n60` tracks the invalid `.gitignore` glob that makes `rg` print
   parse errors.
+- Full role enforcement beyond project creation remains follow-up: chat/proposed
+  updates/settings/member-management must consistently apply `viewer` read-only,
+  `member` approve/update, and `admin` member/delete privileges.
 - Next value-first backend slice: `wqj` LLM gateway (must emit `llm_usage`) →
   `die` orchestrator → `qor` Rovo + `ilz` Notion MCP → `2u9` jira_notion agent.

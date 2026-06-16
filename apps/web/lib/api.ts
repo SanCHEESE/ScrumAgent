@@ -82,6 +82,13 @@ export interface NotionConfigPayload {
   section_url: string;
 }
 
+export type ProjectRole = "admin" | "member" | "viewer";
+
+export interface ProjectMemberCreatePayload {
+  user_id: number;
+  role: ProjectRole;
+}
+
 export interface CreateProjectPayload {
   name: string;
   description?: string | null;
@@ -89,6 +96,7 @@ export interface CreateProjectPayload {
   google_auth_session_id: string;
   jira?: JiraConfigPayload;
   notion?: NotionConfigPayload;
+  members?: ProjectMemberCreatePayload[];
   member_user_ids?: number[];
 }
 
@@ -96,7 +104,13 @@ export interface ProjectMemberOut {
   user_id: number;
   email: string;
   name: string | null;
-  role: string;
+  role: ProjectRole;
+}
+
+export interface MeetingParticipantSuggestion {
+  email: string;
+  display_name: string | null;
+  event_count: number;
 }
 
 export interface CalendarAttendee {
@@ -232,6 +246,12 @@ export const api = {
     apiFetch<GoogleStartResponse>("/projects/integrations/google/start", {
       method: "POST",
     }),
+  listGoogleMeetingParticipants: (authSessionId: string) =>
+    apiFetch<MeetingParticipantSuggestion[]>(
+      `/projects/integrations/google/meeting-participants?auth_session_id=${encodeURIComponent(
+        authSessionId,
+      )}`,
+    ),
   testJira: (p: JiraConfigPayload) =>
     apiFetch<TestResult>("/projects/integrations/jira/test", {
       method: "POST",

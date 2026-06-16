@@ -2,10 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type JSX } from "react";
+import { useEffect, useState, type JSX } from "react";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
-import { ApiError, api, type CreateProjectPayload } from "@/lib/api";
+import {
+  ApiError,
+  api,
+  type CreateProjectPayload,
+  type DirectoryUser,
+  type MeetingParticipantSuggestion,
+} from "@/lib/api";
 import { StepDetails } from "./StepDetails";
 import { StepGoogle } from "./StepGoogle";
 import { StepJira } from "./StepJira";
@@ -22,16 +28,62 @@ const STEPS: readonly WizardStep[] = [
   { key: "members", label: "Select team members" },
 ];
 
+const FIXED_MEMBER_EMAILS = new Set([
+  "dev@municorn.com",
+  "a.bochkarev@municorn.com",
+]);
+
+export interface SuggestedProjectMember extends DirectoryUser {
+  source: "meeting" | "fallback";
+  eventCount: number;
+  meetingDisplayName: string | null;
+}
+
 export function AddProjectWizard(): JSX.Element {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [data, setData] = useState<WizardFormData>(INITIAL_FORM);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [memberCandidates, setMemberCandidates] = useState<SuggestedProjectMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersError, setMembersError] = useState<string | null>(null);
 
   const update = (patch: Partial<WizardFormData>) => {
     setData((prev) => ({ ...prev, ...patch }));
   };
+
+  useEffect(() => {
+    const authSessionId = data.googleAuthSessionId;
+    if (!authSessionId) return;
+    let active = true;
+    setMembersLoading(true);
+    setMembersError(null);
+    (async () => {
+      try {
+        const [directory, me, participants] = await Promise.all([
+          api.listUsers(),
+          api.me().catch(() => null),
+          api.listGoogleMeetingParticipants(authSessionId),
+        ]);
+        if (!active) return;
+        setMemberCandidates(buildMemberCandidates(directory, participants, me?.id));
+      } catch (e) {
+        if (!active) return;
+        setMemberCandidates([]);
+        setMembersError(
+          e instanceof ApiError
+            ? e.message
+            : "Could not load meeting participants.",
+        );
+      } finally {
+        if (active) setMembersLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [data.googleAuthSessionId]);
 
   const next = () => setStep((s) => Math.min(s + 1, STEPS.length - 1));
   const prev = () => setStep((s) => Math.max(s - 1, 0));
@@ -46,7 +98,10 @@ export function AddProjectWizard(): JSX.Element {
         description: data.description.trim() || null,
         color: data.color,
         google_auth_session_id: data.googleAuthSessionId,
-        member_user_ids: data.selectedUserIds,
+        members: data.selectedUserIds.map((userId) => ({
+          user_id: userId,
+          role: data.selectedMemberRoles[userId] ?? "member",
+        })),
       };
       if (
         data.jiraSiteUrl.trim() &&
@@ -115,7 +170,15 @@ export function AddProjectWizard(): JSX.Element {
           {step === 1 && <StepGoogle data={data} onChange={update} />}
           {step === 2 && <StepJira data={data} onChange={update} />}
           {step === 3 && <StepNotion data={data} onChange={update} />}
-          {step === 4 && <StepMembers data={data} onChange={update} />}
+          {step === 4 && (
+            <StepMembers
+              data={data}
+              onChange={update}
+              users={memberCandidates}
+              loading={membersLoading}
+              error={membersError}
+            />
+          )}
         </div>
 
         {error && (
@@ -150,4 +213,41 @@ export function AddProjectWizard(): JSX.Element {
       </div>
     </div>
   );
+}
+
+function buildMemberCandidates(
+  directory: DirectoryUser[],
+  participants: MeetingParticipantSuggestion[],
+  currentUserId?: number,
+): SuggestedProjectMember[] {
+  const usersByEmail = new Map(directory.map((u) => [u.email.toLowerCase(), u]));
+  const result: SuggestedProjectMember[] = [];
+  const added = new Set<string>();
+
+  for (const participant of participants) {
+    const email = participant.email.toLowerCase();
+    const user = usersByEmail.get(email);
+    if (!user || user.id === currentUserId || added.has(email)) continue;
+    result.push({
+      ...user,
+      source: "meeting",
+      eventCount: participant.event_count,
+      meetingDisplayName: participant.display_name,
+    });
+    added.add(email);
+  }
+
+  for (const email of FIXED_MEMBER_EMAILS) {
+    const user = usersByEmail.get(email);
+    if (!user || user.id === currentUserId || added.has(email)) continue;
+    result.push({
+      ...user,
+      source: "fallback",
+      eventCount: 0,
+      meetingDisplayName: null,
+    });
+    added.add(email);
+  }
+
+  return result;
 }

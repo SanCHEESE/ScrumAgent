@@ -87,6 +87,19 @@ function mockBackend(
       json: [
         { id: 1, email: "alice@municorn.com", name: "Alice" },
         { id: 2, email: "bob@municorn.com", name: "Bob" },
+        { id: 3, email: "carol@municorn.com", name: "Carol" },
+        { id: 4, email: "dev@municorn.com", name: "Dev User" },
+        { id: 5, email: "a.bochkarev@municorn.com", name: "A. Bochkarev" },
+        { id: 6, email: "random@municorn.com", name: "Random User" },
+      ],
+    }),
+  );
+  context.route(`${API}/projects/integrations/google/meeting-participants*`, (route) =>
+    route.fulfill({
+      json: [
+        { email: "bob@municorn.com", display_name: "Bob", event_count: 2 },
+        { email: "carol@municorn.com", display_name: "Carol", event_count: 1 },
+        { email: "external@example.com", display_name: "External", event_count: 1 },
       ],
     }),
   );
@@ -249,7 +262,7 @@ test.describe("Add Project wizard", () => {
     await expect(page.getByRole("button", { name: "Authorize agent" })).toBeVisible();
   });
 
-  test("authorizes the agent, selects a member, and creates the project", async ({
+  test("authorizes the agent, selects meeting participants with roles, and creates the project", async ({
     page,
     context,
   }) => {
@@ -269,20 +282,29 @@ test.describe("Add Project wizard", () => {
     await page.getByRole("button", { name: /Continue/ }).click();
     await page.getByRole("button", { name: /Continue/ }).click();
 
-    // Step 5 — Select team members: Alice (self) is excluded; pick Bob.
+    // Step 5 — Select team members: Alice (self) is excluded; suggestions are
+    // meeting participants plus the two fixed fallback accounts.
     await expect(
       page.locator(".wizard-progress-step.active").filter({
         hasText: "Select team members",
       }),
     ).toBeVisible();
+    await expect(page.getByText("bob@municorn.com")).toBeVisible();
+    await expect(page.getByText("carol@municorn.com")).toBeVisible();
+    await expect(page.getByText("dev@municorn.com")).toBeVisible();
+    await expect(page.getByText("a.bochkarev@municorn.com")).toBeVisible();
+    await expect(page.getByText("random@municorn.com")).toHaveCount(0);
+
     await page.getByText("bob@municorn.com").click();
+    await page.getByLabel("Role for Bob").selectOption("viewer");
 
     await page.getByRole("button", { name: /Create project/ }).click();
     await expect(page).toHaveURL(/\/projects\?created=1/);
 
     const body = backend.createBody();
     expect(body?.google_auth_session_id).toBe("sess-e2e");
-    expect(body?.member_user_ids).toEqual([2]);
+    expect(body?.members).toEqual([{ user_id: 2, role: "viewer" }]);
+    expect(body?.member_user_ids).toBeUndefined();
   });
 
   test("Jira Test connection reports success", async ({ page, context }) => {

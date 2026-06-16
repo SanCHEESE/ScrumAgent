@@ -1,48 +1,56 @@
 "use client";
 
-import { useEffect, useState, type JSX } from "react";
+import type { JSX } from "react";
 import { Icon } from "@/components/ui/Icon";
-import { ApiError, api, type DirectoryUser } from "@/lib/api";
+import type { ProjectRole } from "@/lib/api";
+import type { SuggestedProjectMember } from "./AddProjectWizard";
 import type { WizardFormData } from "./types";
 
 export interface StepMembersProps {
   data: WizardFormData;
   onChange: (patch: Partial<WizardFormData>) => void;
+  users: SuggestedProjectMember[];
+  loading: boolean;
+  error: string | null;
 }
 
-export function StepMembers({ data, onChange }: StepMembersProps): JSX.Element {
-  const [users, setUsers] = useState<DirectoryUser[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+const ROLE_OPTIONS: readonly { value: ProjectRole; label: string }[] = [
+  { value: "member", label: "Member" },
+  { value: "viewer", label: "Viewer" },
+  { value: "admin", label: "Admin" },
+];
 
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const [directory, me] = await Promise.all([
-          api.listUsers(),
-          api.me().catch(() => null),
-        ]);
-        if (!active) return;
-        // Exclude the creator — they're added as admin automatically.
-        setUsers(directory.filter((u) => u.id !== me?.id));
-      } catch (e) {
-        if (!active) return;
-        setError(e instanceof ApiError ? e.message : "Could not load members.");
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
-
+export function StepMembers({
+  data,
+  onChange,
+  users,
+  loading,
+  error,
+}: StepMembersProps): JSX.Element {
   const toggle = (id: number) => {
-    const selected = data.selectedUserIds.includes(id)
-      ? data.selectedUserIds.filter((x) => x !== id)
+    if (data.selectedUserIds.includes(id)) {
+      const nextRoles = { ...data.selectedMemberRoles };
+      delete nextRoles[id];
+      onChange({
+        selectedUserIds: data.selectedUserIds.filter((x) => x !== id),
+        selectedMemberRoles: nextRoles,
+      });
+      return;
+    }
+    onChange({
+      selectedUserIds: [...data.selectedUserIds, id],
+      selectedMemberRoles: { ...data.selectedMemberRoles, [id]: "member" },
+    });
+  };
+
+  const setRole = (id: number, role: ProjectRole) => {
+    const selectedUserIds = data.selectedUserIds.includes(id)
+      ? data.selectedUserIds
       : [...data.selectedUserIds, id];
-    onChange({ selectedUserIds: selected });
+    onChange({
+      selectedUserIds,
+      selectedMemberRoles: { ...data.selectedMemberRoles, [id]: role },
+    });
   };
 
   const hasJira =
@@ -71,7 +79,8 @@ export function StepMembers({ data, onChange }: StepMembersProps): JSX.Element {
 
         {!loading && !error && users.length === 0 && (
           <div className="muted" style={{ fontSize: 13 }}>
-            No other members have signed in yet. You can add them later in Settings.
+            No signed-in meeting participants found. You can add members later in
+            Settings.
           </div>
         )}
 
@@ -99,8 +108,28 @@ export function StepMembers({ data, onChange }: StepMembersProps): JSX.Element {
                     <div className="muted" style={{ fontSize: 12 }}>
                       {u.email}
                     </div>
+                    <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>
+                      {u.source === "meeting"
+                        ? `${u.eventCount} meeting${u.eventCount === 1 ? "" : "s"}`
+                        : "Suggested account"}
+                    </div>
                   </div>
-                  {selected && <Icon name="check" size={14} />}
+                  <select
+                    aria-label={`Role for ${u.name ?? u.email}`}
+                    value={data.selectedMemberRoles[u.id] ?? "member"}
+                    className="input member-role-select"
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => setRole(u.id, e.target.value as ProjectRole)}
+                  >
+                    {ROLE_OPTIONS.map((role) => (
+                      <option key={role.value} value={role.value}>
+                        {role.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="member-select-check">
+                    {selected && <Icon name="check" size={14} />}
+                  </div>
                 </div>
               );
             })}

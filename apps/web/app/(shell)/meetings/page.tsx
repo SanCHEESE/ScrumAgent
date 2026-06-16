@@ -156,7 +156,7 @@ export default function MeetingsPage() {
               onChange={(e) => setQuery(e.target.value)}
             />
           </label>
-          <Button variant="secondary" size="sm">
+          <Button variant="secondary" size="sm" disabled>
             <Icon name="plus" size={14} /> Upload recording
           </Button>
         </div>

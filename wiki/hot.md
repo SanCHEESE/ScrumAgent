@@ -1,14 +1,15 @@
 ---
 type: meta
 title: "Hot Cache"
-updated: 2026-06-16T12:37:25+04:00
+updated: 2026-06-16T12:42:03+04:00
 tags: [meta, hot-cache]
 ---
 
 # Recent Context
 
 ## Last Updated
-2026-06-16. **Shell and Home live-data polish (`ScrumAgent-qe6`,
+2026-06-16. **Shell and Home live-data polish (`ScrumAgent-dik`,
+`ScrumAgent-qe6`,
 `ScrumAgent-fv7`, `ScrumAgent-cv3`, `ScrumAgent-iie`, `ScrumAgent-qiw`,
 `ScrumAgent-ec9`, `ScrumAgent-9we`).** The sidebar project
 switcher now loads real projects from `GET /projects`, defaults to the first real
@@ -20,6 +21,8 @@ Meetings nav badge now shares that live current-week count instead of rendering 
 stale hardcoded badge. The sidebar footer user row no longer opens a popover;
 the chevron slot is a direct Sign out button. The Kabanchik mark is now a
 custom SVG running-boar silhouette and favicon instead of an emoji placeholder.
+The Meetings header keeps the future Upload recording CTA visible but disabled
+until an upload/import pipeline exists.
 
 ## Key Recent Facts
 - Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker
@@ -31,6 +34,9 @@ custom SVG running-boar silhouette and favicon instead of an emoji placeholder.
 - Canonical plan: [[sources/mvp-v2-plan]]. Tracking: `bd`. TDD mandatory.
 
 ## What just shipped (same day, newest first)
+- **Upload recording disabled** (`dik`): `/meetings` still shows the Upload
+  recording CTA, but the button is disabled until the recording upload/import
+  flow exists.
 - **SVG brand mark** (`qe6`): sidebar logo and favicon use
   `apps/web/public/kabanchik-boar.svg`, replacing the placeholder boar emoji.
 - **Sidebar direct logout** (`fv7`): footer user row is no longer a menu trigger;

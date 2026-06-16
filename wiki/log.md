@@ -10,6 +10,18 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-16 — Upload recording disabled on Meetings (ScrumAgent-dik)
+
+The `/meetings` header still shows the **Upload recording** affordance, but it
+is now disabled because the recording upload/import flow is not implemented yet.
+This prevents the button from appearing actionable while preserving the future
+CTA location in the page header.
+
+Verification: watched the focused meetings e2e fail because Upload recording was
+enabled, then pass after adding `disabled`. `npm --prefix apps/web run
+typecheck` and the full `meetings.spec.ts` are green. In-app browser on
+`/meetings` showed the button with the disabled attribute.
+
 ## 2026-06-16 — Kabanchik SVG boar logo and favicon (ScrumAgent-qe6)
 
 The sidebar brand mark no longer renders the placeholder `🐗` emoji. Added

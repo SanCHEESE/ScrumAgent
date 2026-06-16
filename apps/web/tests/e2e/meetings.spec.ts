@@ -89,6 +89,10 @@ test.describe("Meetings list (live calendar)", () => {
     await mockCalendarApi(page);
     await page.goto("/meetings");
 
+    await expect(
+      page.getByRole("button", { name: "Upload recording" }),
+    ).toBeDisabled();
+
     const rows = page.locator(".meetings-table-row");
     const titles = page.locator(".mtr-title");
     await expect(rows).toHaveCount(2);

@@ -15,7 +15,6 @@ export const NAV: NavItem[] = [
     label: "Meetings",
     icon: "calendar",
     href: "/meetings",
-    badge: 2,
   },
   {
     key: "updates",

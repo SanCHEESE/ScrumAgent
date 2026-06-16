@@ -1,7 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
+import { api, type CalendarMeeting } from "@/lib/api";
+import { weeklyMeetingStats } from "@/lib/meeting-stats";
 import { NAV } from "@/lib/nav";
 import { useActiveProject } from "./ActiveProjectProvider";
 import { UserMenu } from "./UserMenu";
@@ -20,9 +23,42 @@ export interface SidebarProps {
 export function Sidebar({ onSwitchProject }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname() ?? HOME_HREF;
-  const { activeProject } = useActiveProject();
+  const { activeProject, projects } = useActiveProject();
+  const [meetingsBadge, setMeetingsBadge] = useState(0);
 
   const goHome = () => router.push(HOME_HREF);
+
+  useEffect(() => {
+    let active = true;
+
+    if (projects.length === 0) {
+      setMeetingsBadge(0);
+      return () => {
+        active = false;
+      };
+    }
+
+    (async () => {
+      const results = await Promise.allSettled(
+        projects.map((p) => api.listProjectMeetings(p.id)),
+      );
+      if (!active) return;
+
+      const meetings = results
+        .filter(
+          (r): r is PromiseFulfilledResult<CalendarMeeting[]> =>
+            r.status === "fulfilled",
+        )
+        .flatMap((r) => r.value);
+      setMeetingsBadge(weeklyMeetingStats(meetings, new Date()).currentWeek);
+    })().catch(() => {
+      if (active) setMeetingsBadge(0);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [projects]);
 
   return (
     <aside className="sidebar">
@@ -71,6 +107,7 @@ export function Sidebar({ onSwitchProject }: SidebarProps) {
       <nav className="nav" aria-label="Primary">
         {NAV.map((n) => {
           const active = isActive(pathname, n.href);
+          const badge = n.key === "meetings" ? meetingsBadge : n.badge;
           return (
             <div
               key={n.key}
@@ -90,9 +127,9 @@ export function Sidebar({ onSwitchProject }: SidebarProps) {
                 <Icon name={n.icon as Parameters<typeof Icon>[0]["name"]} size={18} />
               </div>
               <div className="nav-label">{n.label}</div>
-              {n.badge !== undefined && n.badge > 0 && (
+              {badge !== undefined && badge > 0 && (
                 <div className={`nav-badge ${n.badgeWarn ? "warn" : ""}`}>
-                  {n.badge}
+                  {badge}
                 </div>
               )}
             </div>

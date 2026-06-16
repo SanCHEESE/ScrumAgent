@@ -10,6 +10,21 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-16 — Meetings sidebar badge uses live weekly count (ScrumAgent-cv3)
+
+The shell **Meetings** nav badge no longer comes from `NAV`'s hardcoded
+`badge: 2`. The sidebar now loads each real project calendar through the same
+`GET /projects/{id}/meetings` endpoint as Home and counts non-cancelled meetings
+in the current browser-local week using shared `apps/web/lib/meeting-stats.ts`
+logic. When no live project data exists, the Meetings badge is absent instead of
+showing a stale number; the Updates badge remains driven by pending updates.
+
+Verification: watched the Home e2e fail with the nav badge still reading `2`
+while the mocked live weekly count was `3`, then pass after the change.
+`npm --prefix apps/web run typecheck`, `home.spec.ts`, and `meetings.spec.ts`
+are green. The in-app browser on `/` showed no stale Meetings badge when the
+local app had no selected project/live calendar data.
+
 ## 2026-06-16 — Shell project switcher uses real projects (ScrumAgent-iie)
 
 The shell `ActiveProjectProvider` no longer initializes from

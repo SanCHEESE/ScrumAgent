@@ -40,7 +40,10 @@ at provisioning ([[modules/project-provisioning]]) is used directly:
   rows deep-link to the Google Calendar event. Home's **Recent meetings** card now uses
   the same project calendar endpoint via `RecentMeetingsLive`, showing the newest three
   calendar events with real date/month, attendee count, duration, project name, and
-  Scheduled/Past status. The Home widget only fetches when a decodable bearer JWT exists,
+  Scheduled/Past status. Home's **Meetings this week** stat and the shell **Meetings**
+  nav badge share `apps/web/lib/meeting-stats.ts`, so both count non-cancelled live
+  calendar rows in the browser-local Monday-to-Monday current week instead of rendering
+  stale mock constants. The Home widget only fetches when a decodable bearer JWT exists,
   so optional calendar loading does not redirect unauthenticated shell/tweaks views.
   Per-project failures surface as inline alerts on `/meetings`; Home shows an honest
   empty/error state when no calendar data can be loaded. Detail page `/meetings/[id]` is

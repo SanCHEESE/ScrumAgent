@@ -201,6 +201,11 @@ test.describe("Home dashboard", () => {
     await expect(stat.locator(".stat-value")).toHaveText("3");
     await expect(stat.locator(".stat-trend")).toHaveText("+2 vs last week");
     await expect(stat.getByText("12", { exact: true })).toHaveCount(0);
+
+    const meetingsNav = page
+      .locator(".nav-item")
+      .filter({ has: page.locator(".nav-label", { hasText: "Meetings" }) });
+    await expect(meetingsNav.locator(".nav-badge")).toHaveText("3");
   });
 
   test("Ask agent header button navigates to /chat", async ({ page }) => {

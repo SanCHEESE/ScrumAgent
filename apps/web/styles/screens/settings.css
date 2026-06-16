@@ -824,3 +824,8 @@ body.dark .billing-key-used .warn {
 .notifications-matrix tbody tr:last-child td {
   border-bottom: 0;
 }
+
+/* Invited (not-yet-registered) members read as muted until they sign in. */
+.members-table tbody tr.member-row-pending td {
+  opacity: 0.72;
+}

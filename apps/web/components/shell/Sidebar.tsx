@@ -23,8 +23,10 @@ export interface SidebarProps {
 export function Sidebar({ onSwitchProject }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname() ?? HOME_HREF;
-  const { activeProject, projects } = useActiveProject();
+  const { activeProject, projects, status } = useActiveProject();
   const [meetingsBadge, setMeetingsBadge] = useState(0);
+  // How many projects' calendars failed to load for the current badge count.
+  const [meetingsFailed, setMeetingsFailed] = useState(0);
 
   const goHome = () => router.push(HOME_HREF);
 
@@ -33,6 +35,7 @@ export function Sidebar({ onSwitchProject }: SidebarProps) {
 
     if (projects.length === 0) {
       setMeetingsBadge(0);
+      setMeetingsFailed(0);
       return () => {
         active = false;
       };
@@ -50,15 +53,36 @@ export function Sidebar({ onSwitchProject }: SidebarProps) {
             r.status === "fulfilled",
         )
         .flatMap((r) => r.value);
+      setMeetingsFailed(results.filter((r) => r.status === "rejected").length);
       setMeetingsBadge(weeklyMeetingStats(meetings, new Date()).currentWeek);
     })().catch(() => {
-      if (active) setMeetingsBadge(0);
+      if (active) {
+        setMeetingsBadge(0);
+        setMeetingsFailed(0);
+      }
     });
 
     return () => {
       active = false;
     };
   }, [projects]);
+
+  // While projects are still loading, or when the fetch failed, don't render the
+  // NO_PROJECT sentinel ("No project selected") in the switcher — on a backend
+  // error that reads as "you have no projects" rather than "couldn't load"
+  // (review #5 / ScrumAgent-hky). A genuinely-empty (ready) account still shows it.
+  const switcherName =
+    status === "error"
+      ? "Couldn't load projects"
+      : status === "loading"
+        ? "Loading…"
+        : activeProject.name;
+  const switcherBody =
+    status === "error"
+      ? "Reload to try again"
+      : status === "loading"
+        ? ""
+        : activeProject.email;
 
   return (
     <aside className="sidebar">
@@ -96,16 +120,24 @@ export function Sidebar({ onSwitchProject }: SidebarProps) {
       >
         <div className="project-switcher-header">
           <div className={`project-dot ${activeProject.status}`} />
-          <div className="project-name">{activeProject.name}</div>
+          <div className="project-name">{switcherName}</div>
           <Icon name="chevron_down" size={14} />
         </div>
-        <div className="project-switcher-body">{activeProject.email}</div>
+        <div className="project-switcher-body">{switcherBody}</div>
       </div>
 
       <nav className="nav" aria-label="Primary">
         {NAV.map((n) => {
           const active = isActive(pathname, n.href);
           const badge = n.key === "meetings" ? meetingsBadge : n.badge;
+          // Only the live meetings badge can under-report; flag it when some
+          // project calendars failed so the number isn't read as authoritative.
+          const badgeTitle =
+            n.key === "meetings" && meetingsFailed > 0
+              ? `${meetingsFailed} calendar${
+                  meetingsFailed === 1 ? "" : "s"
+                } failed to load — count may be incomplete`
+              : undefined;
           return (
             <div
               key={n.key}
@@ -126,7 +158,11 @@ export function Sidebar({ onSwitchProject }: SidebarProps) {
               </div>
               <div className="nav-label">{n.label}</div>
               {badge !== undefined && badge > 0 && (
-                <div className={`nav-badge ${n.badgeWarn ? "warn" : ""}`}>
+                <div
+                  className={`nav-badge ${n.badgeWarn ? "warn" : ""}`}
+                  title={badgeTitle}
+                  aria-label={badgeTitle}
+                >
                   {badge}
                 </div>
               )}

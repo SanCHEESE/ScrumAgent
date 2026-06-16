@@ -990,6 +990,10 @@ def _serialize(project: Project, db: Session) -> ProjectOut:
     members = []
     for member in project.members:
         member_user = db.get(User, member.user_id)
+        if member_user is None:
+            # Orphaned membership (user_id points at a deleted/missing User).
+            # Skip it so serialization can't 500 the whole response.
+            continue
         members.append(
             MemberOut(
                 user_id=member.user_id,

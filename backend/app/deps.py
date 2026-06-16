@@ -14,6 +14,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy import Engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
@@ -98,17 +99,45 @@ def is_agent_preview(settings: Settings) -> bool:
     return settings.app_environment == "agent_preview"
 
 
+def _preview_user(db: Session) -> User | None:
+    # ``.first()`` (not ``.one_or_none()``): if duplicate ``dev-sub`` rows ever
+    # exist, return one rather than raising ``MultipleResultsFound``.
+    return (
+        db.query(User)
+        .filter(User.google_sub == PREVIEW_GOOGLE_SUB)
+        .order_by(User.id)
+        .first()
+    )
+
+
 def _ensure_preview_user(db: Session) -> User:
-    user = db.query(User).filter(User.google_sub == PREVIEW_GOOGLE_SUB).one_or_none()
-    if user is None:
-        user = User(
-            google_sub=PREVIEW_GOOGLE_SUB,
-            email=PREVIEW_EMAIL,
-            name=PREVIEW_NAME,
-        )
-        db.add(user)
+    """Return the shared agent-preview user, creating it on first use.
+
+    Robust under concurrent first requests: two requests can both read ``None``
+    and both try to insert ``google_sub="dev-sub"``. The loser's commit raises
+    ``IntegrityError`` (unique ``google_sub``); we roll back and re-read the row
+    the winner committed instead of crashing. Common case (row already exists,
+    or this request creates it once) is unchanged.
+    """
+    user = _preview_user(db)
+    if user is not None:
+        return user
+    user = User(
+        google_sub=PREVIEW_GOOGLE_SUB,
+        email=PREVIEW_EMAIL,
+        name=PREVIEW_NAME,
+    )
+    db.add(user)
+    try:
         db.commit()
-        db.refresh(user)
+    except IntegrityError:
+        # A concurrent request inserted the preview user first.
+        db.rollback()
+        existing = _preview_user(db)
+        if existing is None:  # pragma: no cover - integrity error implies a row
+            raise
+        return existing
+    db.refresh(user)
     return user
 
 

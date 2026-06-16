@@ -10,6 +10,36 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-16 — Code-review fixes: meetings count, recent list, home header, backend hardening (ScrumAgent-y6a, -oqo, -hky, -02t)
+
+A review of the 2026-06-15/16 commits surfaced correctness bugs in the freshly
+shipped live-data work; fixed via four parallel agents + integration.
+
+- **Meetings count** (`meeting-stats.ts`, `HomeMeetingsStat`, `Sidebar`): dedup
+  events by id (no cross-project double-count); DST-safe week bounds via calendar
+  arithmetic (was a fixed 168h offset); partial fetch failures surfaced
+  (title/aria, `—` when all fail) instead of silently under-reported.
+- **Recent meetings** (`RecentMeetingsLive`): distinguishes empty vs
+  needs-connection (409) vs hard error; filters cancelled events from the list;
+  dedups rows by id; key uses event id.
+- **Home header** (`page.tsx`, `ActiveProjectProvider`, `Sidebar`): greeting
+  computed post-mount (hydration-safe); provider exposes `status`
+  loading/ready/error; subtitle AND sidebar switcher show an error affordance on
+  `GET /projects` failure rather than the "No project selected" sentinel.
+- **Backend hardening** (`deps.py`, `projects.py`): `_ensure_preview_user`
+  tolerates a concurrent insert (IntegrityError → rollback → re-query) and
+  pre-existing duplicates (`.first()`); `_serialize` skips orphaned memberships
+  instead of 500-ing.
+- **Config** (`docker-compose.yml`): frontend `NEXT_PUBLIC_APP_ENVIRONMENT` reads
+  its own var (was slaved to `${APP_ENVIRONMENT}`, making the documented knob a
+  no-op under Compose).
+
+Verification: `tsc --noEmit` clean; backend `pytest` 148 passed (141 + 7 new TDD);
+17 home e2e tests green, no regression. (Pre-existing `login`/`auth` e2e failures
+were the local dev server running in `agent_preview`, not these changes.) The five
+cleanup/altitude findings were filed as ScrumAgent-iar/-1yf/-7xk/-44x/-zis (not
+implemented here).
+
 ## 2026-06-16 — Project creation meeting participant suggestions and roles (ScrumAgent-eu3)
 
 The Add Project wizard now preloads meeting participant suggestions right after

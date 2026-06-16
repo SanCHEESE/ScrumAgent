@@ -16,6 +16,12 @@ interface RecentMeetingsState {
   meetings: RecentMeeting[];
   error: string | null;
   noProjects: boolean;
+  /**
+   * True when meetings.length === 0 because every project that failed did so
+   * with a 409 ("no Google calendar connected") — a soft, actionable state
+   * distinct from a hard fetch failure. Ignored when there are meetings to show.
+   */
+  needsCalendar: boolean;
 }
 
 const EMPTY_RECENT_MEETINGS: RecentMeetingsState = {
@@ -23,6 +29,7 @@ const EMPTY_RECENT_MEETINGS: RecentMeetingsState = {
   meetings: [],
   error: null,
   noProjects: false,
+  needsCalendar: false,
 };
 
 function eventStartMs(m: CalendarMeeting): number {
@@ -146,6 +153,16 @@ function RecentMeetingsList({
       </div>
     );
   }
+  if (state.meetings.length === 0 && state.needsCalendar) {
+    return (
+      <div className="empty">
+        <div className="empty-title">Connect Google Calendar</div>
+        <div className="empty-sub">
+          Link a Google Calendar to your project to show upcoming meetings.
+        </div>
+      </div>
+    );
+  }
   if (state.meetings.length === 0) {
     return (
       <div className="empty">
@@ -158,7 +175,7 @@ function RecentMeetingsList({
     <div className="meeting-compact-list">
       {state.meetings.map((m) => (
         <RecentMeetingRow
-          key={`${m.projectName}-${m.id}`}
+          key={m.id}
           meeting={m}
           onClick={() => onMeetingClick(m)}
         />
@@ -208,25 +225,52 @@ export function RecentMeetingsLive(): JSX.Element {
         if (!active) return;
 
         const now = Date.now();
-        const meetings = results
+        const fulfilled = results
           .filter(
             (r): r is PromiseFulfilledResult<RecentMeeting[]> =>
               r.status === "fulfilled",
           )
-          .flatMap((r) => r.value)
+          .flatMap((r) => r.value);
+
+        // De-duplicate by event id (keep first) so a shared event across two
+        // projects yields a single row, then drop cancelled events (mirrors the
+        // stats helper) and anything that has already started.
+        const seen = new Set<string>();
+        const meetings = fulfilled
+          .filter((m) => {
+            if (seen.has(m.id)) return false;
+            seen.add(m.id);
+            return true;
+          })
+          .filter((m) => m.status?.toLowerCase() !== "cancelled")
           .filter((m) => eventStartMs(m) >= now)
           .sort((a, b) => eventStartMs(a) - eventStartMs(b))
           .slice(0, 3);
 
-        const problems = results.filter((r) => r.status === "rejected").length;
+        // Classify rejected per-project fetches. A 409 means that project has no
+        // Google calendar connected (soft / actionable); any other rejection is
+        // a hard failure worth surfacing as a red error.
+        const rejected = results.filter(
+          (r): r is PromiseRejectedResult => r.status === "rejected",
+        );
+        const hardFailures = rejected.filter(
+          (r) => !(r.reason instanceof ApiError && r.reason.status === 409),
+        ).length;
+        const notConnected = rejected.length - hardFailures;
+
+        // With meetings to show, never replace the populated list with an
+        // error. With none, prefer the hard-error alert, then the
+        // needs-connection empty state, then the generic empty state.
         setState({
           loading: false,
           meetings,
           error:
-            meetings.length === 0 && problems > 0
+            meetings.length === 0 && hardFailures > 0
               ? "Could not load Google Calendar meetings."
               : null,
           noProjects: false,
+          needsCalendar:
+            meetings.length === 0 && hardFailures === 0 && notConnected > 0,
         });
       } catch (e) {
         if (!active) return;

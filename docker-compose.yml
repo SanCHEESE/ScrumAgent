@@ -33,7 +33,12 @@ services:
     command: sh -c "npm install && npm run dev"
     environment:
       - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-      - NEXT_PUBLIC_APP_ENVIRONMENT=${APP_ENVIRONMENT:-production}
+      # Read the dedicated NEXT_PUBLIC_APP_ENVIRONMENT from .env (default
+      # production). Previously this read ${APP_ENVIRONMENT}, so the
+      # NEXT_PUBLIC_APP_ENVIRONMENT knob documented in .env.example was a silent
+      # no-op under Compose — review #14. Keep it equal to APP_ENVIRONMENT (the
+      # .env.example template ships both set to the same value).
+      - NEXT_PUBLIC_APP_ENVIRONMENT=${NEXT_PUBLIC_APP_ENVIRONMENT:-production}
     ports:
       - "3000:3000"
     volumes:

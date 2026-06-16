@@ -58,9 +58,19 @@ function displayNameFromUser(name: string | null, email: string): string {
  */
 export default function HomePage(): JSX.Element {
   const router = useRouter();
-  const { activeProject } = useActiveProject();
+  const { activeProject, status: projectStatus } = useActiveProject();
   const [layoutVariant, setLayoutVariant] = useState<LayoutVariant>("split");
   const [userName, setUserName] = useState<string | null>(null);
+  // `null` on the server and the first client render so the greeting is
+  // hydration-safe; the real browser time is filled in after mount. Computing
+  // `greetingForHour(new Date().getHours())` during render would let the server
+  // clock (often UTC) and the browser clock fall in different greeting buckets,
+  // causing a hydration text mismatch and a visible greeting flip.
+  const [now, setNow] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setNow(new Date());
+  }, []);
 
   useEffect(() => {
     setLayoutVariant(readLayoutVariant());
@@ -102,8 +112,40 @@ export default function HomePage(): JSX.Element {
   }, []);
 
   const pendingUpdates = UPDATES.filter((u) => u.status === "pending");
-  const greeting = greetingForHour(new Date().getHours());
-  const pageTitle = userName ? `${greeting}, ${userName}` : greeting;
+  // Before mount `now` is null on both the server and the first client render,
+  // so we show a stable, mismatch-free fallback (the user name if known, else a
+  // neutral word). After mount it resolves to `${greeting}, ${userName}`.
+  const greeting = now ? greetingForHour(now.getHours()) : null;
+  const pageTitle = greeting
+    ? userName
+      ? `${greeting}, ${userName}`
+      : greeting
+    : userName ?? "Welcome";
+
+  // Subtitle distinguishes the projects load lifecycle so a backend failure no
+  // longer looks identical to a genuinely empty account. `loading` is neutral,
+  // `error` is a clear "couldn't load" affordance, and `ready` keeps the
+  // existing project-name copy (the NO_PROJECT empty case is acceptable as-is).
+  const projectSubtitle =
+    projectStatus === "loading" ? (
+      <>ScrumAgent has been busy. Loading your projects&hellip;</>
+    ) : projectStatus === "error" ? (
+      <>
+        ScrumAgent has been busy, but we couldn&rsquo;t load your projects.{" "}
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => router.refresh()}
+        >
+          Try again
+        </button>
+      </>
+    ) : (
+      <>
+        ScrumAgent has been busy. Here&rsquo;s what&rsquo;s new with{" "}
+        <strong>{activeProject.name}</strong>.
+      </>
+    );
 
   const headerActions = (
     <div className="hstack">
@@ -190,10 +232,7 @@ export default function HomePage(): JSX.Element {
       <div className="page-header">
         <div>
           <h1 className="page-title">{pageTitle}</h1>
-          <div className="page-subtitle">
-            ScrumAgent has been busy. Here&rsquo;s what&rsquo;s new with{" "}
-            <strong>{activeProject.name}</strong>.
-          </div>
+          <div className="page-subtitle">{projectSubtitle}</div>
         </div>
         {headerActions}
       </div>

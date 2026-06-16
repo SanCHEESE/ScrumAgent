@@ -12,10 +12,20 @@ import type { ReactNode } from "react";
 import { ApiError, api, type ProjectOut } from "@/lib/api";
 import type { Project } from "@/lib/types";
 
+/** Load lifecycle of the GET /projects request that backs the context. */
+export type ActiveProjectStatus = "loading" | "ready" | "error";
+
 interface ActiveProjectContextValue {
   activeProject: Project;
   projects: Project[];
   setActiveProjectById: (id: string) => void;
+  /**
+   * Load status of the projects request. Deterministically "loading" on the
+   * server and the first client render (so SSR/hydration agree), then resolves
+   * to "ready" on success — including a successful *empty* list (zero projects
+   * is "ready", not "error") — or "error" only when a non-401 request fails.
+   */
+  status: ActiveProjectStatus;
 }
 
 const ActiveProjectContext = createContext<ActiveProjectContextValue | null>(
@@ -60,9 +70,12 @@ export function ActiveProjectProvider({
   const [activeId, setActiveId] = useState<string | null>(
     initialProjectId ?? null,
   );
+  // Deterministic on server + first client render so SSR and hydration agree.
+  const [status, setStatus] = useState<ActiveProjectStatus>("loading");
 
   useEffect(() => {
     let active = true;
+    setStatus("loading");
     (async () => {
       try {
         const rows = await api.listProjects();
@@ -81,11 +94,16 @@ export function ActiveProjectProvider({
           }
           return nextProjects[0]?.id ?? null;
         });
+        // A successful response — even an empty list — is "ready".
+        setStatus("ready");
       } catch (e) {
         if (!active) return;
+        // 401 is handled by the API client (token cleared + redirect to login);
+        // leave status as-is rather than flashing an error during the bounce.
         if (e instanceof ApiError && e.status === 401) return;
         setProjects([]);
         setActiveId(null);
+        setStatus("error");
       }
     })();
     return () => {
@@ -106,8 +124,9 @@ export function ActiveProjectProvider({
       activeProject: active,
       projects,
       setActiveProjectById,
+      status,
     };
-  }, [activeId, projects, setActiveProjectById]);
+  }, [activeId, projects, setActiveProjectById, status]);
 
   return (
     <ActiveProjectContext.Provider value={value}>

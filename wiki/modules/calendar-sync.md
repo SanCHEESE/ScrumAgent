@@ -49,6 +49,29 @@ at provisioning ([[modules/project-provisioning]]) is used directly:
   empty/error state when no calendar data can be loaded. Detail page `/meetings/[id]` is
   still mock-backed (artifacts pipeline pending).
 
+## Hardening (2026-06-16 code review — ScrumAgent-y6a / -oqo / -hky)
+
+Follow-up fixes to the live read path above:
+
+- `meeting-stats.ts` now **de-duplicates events by id** before counting (a meeting
+  whose invite reaches two project agent accounts is no longer double-counted) and
+  derives week bounds via **calendar arithmetic** (`startOfWeek(now ± 7 days)`)
+  instead of a fixed 168h offset, so the current/previous-week split stays correct
+  across DST transitions.
+- `HomeMeetingsStat` and the shell **Meetings** badge **surface partial failures**:
+  when some project calendars fail to load they flag the count as possibly
+  incomplete (title/aria; the stat shows `—` if *all* fail) instead of silently
+  under-reporting.
+- `RecentMeetingsLive` distinguishes three end states — generic empty,
+  **needs-connection** (a project calendar returns `409`), and a genuine load
+  **error** (non-409) — instead of one red error whenever any project failed and no
+  upcoming events remained. It also drops `cancelled` events from the list
+  (consistent with the stat) and de-duplicates rows by id.
+- The Home greeting is computed **after mount** (no SSR/browser-timezone hydration
+  mismatch), and `ActiveProjectProvider` exposes a `status` (`loading`/`ready`/`error`);
+  the Home subtitle and the sidebar project switcher show a real error affordance
+  instead of the misleading "No project selected" sentinel when `GET /projects` fails.
+
 ## Still planned
 
 - Filter/flag events without Meet links for the agent join flow.

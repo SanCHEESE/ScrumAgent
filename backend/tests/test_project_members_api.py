@@ -276,3 +276,66 @@ def test_patch_pending_member_role_404_when_no_invite(client, db_session):
         json={"role": "viewer"},
     )
     assert resp.status_code == 404
+
+
+# --- Task 5: GET /{id}/member-suggestions ---
+
+def _events_with(*emails_and_names) -> list[dict]:
+    """One confirmed event whose attendees are the given (email, name) pairs."""
+    return [
+        {
+            "id": "evt-1",
+            "status": "confirmed",
+            "start": {"dateTime": "2026-06-15T10:00:00+02:00"},
+            "end": {"dateTime": "2026-06-15T11:00:00+02:00"},
+            "organizer": {"email": "agent@municorn.com"},
+            "attendees": [
+                {"email": e, "displayName": n} for (e, n) in emails_and_names
+            ],
+        }
+    ]
+
+
+def test_suggestions_excludes_agent_members_and_pending(
+    client, db_session, fake_calendar
+):
+    owner = _make_user(db_session, "alice@municorn.com", "sub-a")
+    project = _make_project(db_session, owner)
+    db_session.add(
+        PendingProjectMember(
+            project_id=project.id, email="carol@municorn.com", role=ProjectRole.member
+        )
+    )
+    db_session.commit()
+    fake_calendar.events = _events_with(
+        ("agent@municorn.com", "Agent"),      # the agent itself — excluded
+        ("alice@municorn.com", "Alice"),      # a registered member — excluded
+        ("carol@municorn.com", "Carol"),      # already invited — excluded
+        ("dave@municorn.com", "Dave"),        # fresh — kept
+    )
+    resp = client.get(
+        f"/projects/{project.id}/member-suggestions", headers=_auth(owner.id)
+    )
+    assert resp.status_code == 200
+    assert resp.json() == [
+        {"email": "dave@municorn.com", "display_name": "Dave", "event_count": 1}
+    ]
+
+
+def test_suggestions_409_when_no_google_credential(client, db_session):
+    owner = _make_user(db_session, "alice@municorn.com", "sub-a")
+    project = _make_project(db_session, owner, refresh_token=None)
+    resp = client.get(
+        f"/projects/{project.id}/member-suggestions", headers=_auth(owner.id)
+    )
+    assert resp.status_code == 409
+
+
+def test_suggestions_502_on_upstream_failure(client, db_session, fake_calendar):
+    owner = _make_user(db_session, "alice@municorn.com", "sub-a")
+    project = _make_project(db_session, owner)
+    fake_calendar.error = GoogleCalendarError("boom")
+    resp = client.get(
+        f"/projects/{project.id}/member-suggestions", headers=_auth(owner.id)
+    )
+    assert resp.status_code == 502

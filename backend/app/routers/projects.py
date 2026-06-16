@@ -1087,6 +1087,66 @@ def update_pending_member_role(
     return _serialize(project, db)
 
 
+@router.get(
+    "/{project_id}/member-suggestions",
+    response_model=list[MeetingParticipantSuggestionOut],
+)
+async def list_member_suggestions(
+    days_back: int = Query(30, ge=0, le=365),
+    days_forward: int = Query(60, ge=0, le=365),
+    project: Project = Depends(require_project_access),
+    db: Session = Depends(get_db),
+    calendar: GoogleCalendarClient = Depends(get_google_calendar),
+) -> list[MeetingParticipantSuggestionOut]:
+    """Meeting participants not yet on the team (member-only).
+
+    Same live-calendar source as ``/meetings``; runs ``_participant_suggestions``
+    (which already drops the agent account), then excludes anyone who is already
+    a registered member or has a pending invitation.
+    """
+    refresh_token = (
+        project.credential.google_refresh_token if project.credential else None
+    )
+    if not refresh_token:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Project has no Google authorization — reconnect the agent account",
+        )
+
+    now = datetime.now(timezone.utc)
+    try:
+        events = await calendar.list_events(
+            refresh_token,
+            time_min=now - timedelta(days=days_back),
+            time_max=now + timedelta(days=days_forward),
+        )
+    except GoogleAuthRevokedError as exc:
+        project.google_connected = False
+        db.commit()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Google authorization expired or was revoked — reconnect the agent account",
+        ) from exc
+    except GoogleCalendarError as exc:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY, "Could not reach Google Calendar"
+        ) from exc
+
+    taken: set[str] = set()
+    for member in project.members:
+        member_user = db.get(User, member.user_id)
+        if member_user is not None and member_user.email:
+            taken.add(member_user.email.strip().lower())
+    for invite in project.pending_members:
+        taken.add(invite.email.strip().lower())
+
+    return [
+        s
+        for s in _participant_suggestions(events, project.agent_email)
+        if s.email not in taken  # s.email is already lower-cased by the aggregator
+    ]
+
+
 def _serialize(project: Project, db: Session) -> ProjectOut:
     members = []
     for member in project.members:

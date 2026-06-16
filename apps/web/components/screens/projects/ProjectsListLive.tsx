@@ -3,6 +3,7 @@
 import { useEffect, useState, type JSX } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { ApiError, api, type ProjectOut } from "@/lib/api";
+import { parseCalendarMs } from "@/lib/calendar-date";
 import type { Project } from "@/lib/types";
 import { ProjectsList } from "./ProjectsList";
 
@@ -19,11 +20,6 @@ function toView(p: ProjectOut): Project {
     meetings: 0,
     pending: 0,
   };
-}
-
-function startMs(start: string | null): number {
-  if (!start) return 0;
-  return new Date(start.length === 10 ? `${start}T00:00:00` : start).getTime();
 }
 
 /** Client wrapper that loads the caller's real projects (owned or member of)
@@ -49,7 +45,8 @@ export function ProjectsListLive(): JSX.Element {
             return {
               id: p.id,
               meetings: events.length,
-              pending: events.filter((e) => startMs(e.start) >= now).length,
+              pending: events.filter((e) => (parseCalendarMs(e.start) ?? 0) >= now)
+                .length,
             };
           }),
         );

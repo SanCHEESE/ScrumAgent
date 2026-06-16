@@ -48,6 +48,7 @@ function toViewProject(p: ProjectOut): Project {
     id: p.id,
     name: p.name,
     email: p.agent_email,
+    color: p.color,
     description: p.description ?? "",
     lastSync: null,
     status: p.google_connected ? "active" : "error",

@@ -1,15 +1,9 @@
 import type { CalendarMeeting } from "./api";
+import { parseCalendarMs } from "./calendar-date";
 
 export interface WeeklyMeetingStats {
   currentWeek: number;
   previousWeek: number;
-}
-
-function eventStartMs(m: CalendarMeeting): number | null {
-  if (!m.start) return null;
-  const d = new Date(m.start.length === 10 ? `${m.start}T00:00:00` : m.start);
-  const time = d.getTime();
-  return Number.isNaN(time) ? null : time;
 }
 
 function startOfWeek(date: Date): Date {
@@ -26,7 +20,7 @@ function countMeetingsBetween(
 ): number {
   return meetings.filter((m) => {
     if (m.status?.toLowerCase() === "cancelled") return false;
-    const start = eventStartMs(m);
+    const start = parseCalendarMs(m.start);
     return start !== null && start >= startMs && start < endMs;
   }).length;
 }

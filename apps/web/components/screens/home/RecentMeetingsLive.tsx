@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, type JSX } from "react";
+import { useMemo, type JSX } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
 import { StatusPill } from "@/components/ui/StatusPill";
-import { ApiError, api, type CalendarMeeting } from "@/lib/api";
-import { decodeTokenEmail, getToken, isAgentPreviewEnvironment } from "@/lib/auth";
+import type { CalendarMeeting } from "@/lib/api";
+import { parseCalendarDate, parseCalendarMs } from "@/lib/calendar-date";
+import { useProjectMeetings } from "@/components/shell/ProjectMeetingsProvider";
 
 interface RecentMeeting extends CalendarMeeting {
   projectName: string;
@@ -33,21 +34,15 @@ const EMPTY_RECENT_MEETINGS: RecentMeetingsState = {
 };
 
 function eventStartMs(m: CalendarMeeting): number {
-  if (!m.start) return 0;
-  return new Date(
-    m.start.length === 10 ? `${m.start}T00:00:00` : m.start,
-  ).getTime();
+  return parseCalendarMs(m.start) ?? 0;
 }
 
 function eventEndMs(m: CalendarMeeting): number {
-  if (!m.end) return 0;
-  return new Date(m.end.length === 10 ? `${m.end}T00:00:00` : m.end).getTime();
+  return parseCalendarMs(m.end) ?? 0;
 }
 
 function eventDate(m: CalendarMeeting): Date | null {
-  if (!m.start) return null;
-  const d = new Date(m.start.length === 10 ? `${m.start}T00:00:00` : m.start);
-  return Number.isNaN(d.getTime()) ? null : d;
+  return parseCalendarDate(m.start);
 }
 
 function formatDay(m: CalendarMeeting): string {
@@ -186,106 +181,48 @@ function RecentMeetingsList({
 
 export function RecentMeetingsLive(): JSX.Element {
   const router = useRouter();
-  const [state, setState] =
-    useState<RecentMeetingsState>(EMPTY_RECENT_MEETINGS);
+  const { meetings, failures, loading, noProjects, projectsError } =
+    useProjectMeetings();
 
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const token = getToken();
-        if (
-          !isAgentPreviewEnvironment() &&
-          (!token || !decodeTokenEmail(token))
-        ) {
-          setState({ ...EMPTY_RECENT_MEETINGS, loading: false });
-          return;
-        }
+  const state = useMemo<RecentMeetingsState>(() => {
+    if (loading) return { ...EMPTY_RECENT_MEETINGS, loading: true };
+    if (projectsError) {
+      return {
+        ...EMPTY_RECENT_MEETINGS,
+        loading: false,
+        error: "Could not load projects.",
+      };
+    }
+    if (noProjects) {
+      return { ...EMPTY_RECENT_MEETINGS, loading: false, noProjects: true };
+    }
 
-        const projects = await api.listProjects();
-        if (!active) return;
-        if (projects.length === 0) {
-          setState({
-            ...EMPTY_RECENT_MEETINGS,
-            loading: false,
-            noProjects: true,
-          });
-          return;
-        }
+    // The provider already deduped by id and dropped cancelled events; here we
+    // keep just the soonest three still-upcoming meetings.
+    const now = Date.now();
+    const recent = meetings
+      .filter((m) => eventStartMs(m) >= now)
+      .sort((a, b) => eventStartMs(a) - eventStartMs(b))
+      .slice(0, 3);
 
-        const results = await Promise.allSettled(
-          projects.map(async (p) => {
-            const events = await api.listProjectMeetings(p.id);
-            return events.map<RecentMeeting>((e) => ({
-              ...e,
-              projectName: p.name,
-            }));
-          }),
-        );
-        if (!active) return;
+    // A 409 means that project has no Google calendar connected (soft /
+    // actionable); any other per-project failure is a hard error. With rows to
+    // show, never replace the populated list with either state.
+    const hardFailures = failures.filter((f) => f.status !== 409).length;
+    const notConnected = failures.filter((f) => f.status === 409).length;
 
-        const now = Date.now();
-        const fulfilled = results
-          .filter(
-            (r): r is PromiseFulfilledResult<RecentMeeting[]> =>
-              r.status === "fulfilled",
-          )
-          .flatMap((r) => r.value);
-
-        // De-duplicate by event id (keep first) so a shared event across two
-        // projects yields a single row, then drop cancelled events (mirrors the
-        // stats helper) and anything that has already started.
-        const seen = new Set<string>();
-        const meetings = fulfilled
-          .filter((m) => {
-            if (seen.has(m.id)) return false;
-            seen.add(m.id);
-            return true;
-          })
-          .filter((m) => m.status?.toLowerCase() !== "cancelled")
-          .filter((m) => eventStartMs(m) >= now)
-          .sort((a, b) => eventStartMs(a) - eventStartMs(b))
-          .slice(0, 3);
-
-        // Classify rejected per-project fetches. A 409 means that project has no
-        // Google calendar connected (soft / actionable); any other rejection is
-        // a hard failure worth surfacing as a red error.
-        const rejected = results.filter(
-          (r): r is PromiseRejectedResult => r.status === "rejected",
-        );
-        const hardFailures = rejected.filter(
-          (r) => !(r.reason instanceof ApiError && r.reason.status === 409),
-        ).length;
-        const notConnected = rejected.length - hardFailures;
-
-        // With meetings to show, never replace the populated list with an
-        // error. With none, prefer the hard-error alert, then the
-        // needs-connection empty state, then the generic empty state.
-        setState({
-          loading: false,
-          meetings,
-          error:
-            meetings.length === 0 && hardFailures > 0
-              ? "Could not load Google Calendar meetings."
-              : null,
-          noProjects: false,
-          needsCalendar:
-            meetings.length === 0 && hardFailures === 0 && notConnected > 0,
-        });
-      } catch (e) {
-        if (!active) return;
-        if (e instanceof ApiError && e.status === 401) return;
-        setState({
-          ...EMPTY_RECENT_MEETINGS,
-          loading: false,
-          error: e instanceof ApiError ? e.message : "Could not load projects.",
-        });
-      }
-    })();
-    return () => {
-      active = false;
+    return {
+      loading: false,
+      meetings: recent,
+      error:
+        recent.length === 0 && hardFailures > 0
+          ? "Could not load Google Calendar meetings."
+          : null,
+      noProjects: false,
+      needsCalendar:
+        recent.length === 0 && hardFailures === 0 && notConnected > 0,
     };
-  }, []);
+  }, [meetings, failures, loading, noProjects, projectsError]);
 
   function openMeeting(m: RecentMeeting): void {
     if (m.html_link) {

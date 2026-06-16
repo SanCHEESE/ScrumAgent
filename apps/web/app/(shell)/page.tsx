@@ -12,12 +12,7 @@ import { HomeMeetingsStat } from "@/components/screens/home/HomeMeetingsStat";
 import { RecentMeetingsLive } from "@/components/screens/home/RecentMeetingsLive";
 import { StatCard } from "@/components/screens/home/StatCard";
 import { UpdateRowCompact } from "@/components/screens/home/UpdateRowCompact";
-import { api } from "@/lib/api";
-import {
-  decodeTokenEmail,
-  getToken,
-  isAgentPreviewEnvironment,
-} from "@/lib/auth";
+import { useCurrentUser } from "@/lib/use-current-user";
 
 type LayoutVariant = "split" | "focused" | "classic";
 
@@ -40,16 +35,6 @@ function greetingForHour(hour: number): string {
   return "Good evening";
 }
 
-function displayNameFromEmail(email: string | null): string | null {
-  if (!email) return null;
-  const localPart = email.split("@")[0]?.trim();
-  return localPart || email;
-}
-
-function displayNameFromUser(name: string | null, email: string): string {
-  return name?.trim() || displayNameFromEmail(email) || "there";
-}
-
 /**
  * Home dashboard. Renders one of three layout variants ("split" / "focused" /
  * "classic") based on the value persisted by the tweaks panel under
@@ -60,7 +45,10 @@ export default function HomePage(): JSX.Element {
   const router = useRouter();
   const { activeProject, status: projectStatus } = useActiveProject();
   const [layoutVariant, setLayoutVariant] = useState<LayoutVariant>("split");
-  const [userName, setUserName] = useState<string | null>(null);
+  // Greeting name from the shared identity resolver (ScrumAgent-zis): the JWT
+  // email label first, refined to the /auth/me full name. Null until resolved,
+  // so the pre-mount title stays hydration-safe.
+  const { displayName: userName } = useCurrentUser();
   // `null` on the server and the first client render so the greeting is
   // hydration-safe; the real browser time is filled in after mount. Computing
   // `greetingForHour(new Date().getHours())` during render would let the server
@@ -85,29 +73,6 @@ export default function HomePage(): JSX.Element {
     return () => {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("tweaks-changed", onTweaksChanged);
-    };
-  }, []);
-
-  useEffect(() => {
-    const token = getToken();
-    const previewMode = isAgentPreviewEnvironment();
-    const tokenEmail = token ? decodeTokenEmail(token) : null;
-
-    setUserName(displayNameFromEmail(tokenEmail));
-    if (!token && !previewMode) return undefined;
-
-    let active = true;
-    api
-      .me()
-      .then((me) => {
-        if (active) setUserName(displayNameFromUser(me.name, me.email));
-      })
-      .catch(() => {
-        // 401 redirects are handled by the API client; keep the token fallback
-        // for transient backend failures.
-      });
-    return () => {
-      active = false;
     };
   }, []);
 

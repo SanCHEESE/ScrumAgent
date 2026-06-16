@@ -34,6 +34,24 @@ frontend/
     └── lib/
 ```
 
+## Shared client helpers (DRY refactors, 2026-06-16)
+
+Cross-cutting logic that had been copy-pasted (and had drifted) is centralized:
+
+- **`lib/use-current-user.ts`** (`useCurrentUser`, ScrumAgent-zis) — the one signed-in
+  identity resolver: instant JWT-`email` label → `/auth/me` full-name refinement →
+  `agent_preview` gating → 401-means-signed-out. Consumed by the Home greeting
+  (`app/(shell)/page.tsx`) and the sidebar `UserMenu`.
+- **`lib/avatar.ts`** (`toParticipant` / `avatarColor` / `avatarInitials`, ScrumAgent-44x)
+  — one palette + one initials/colour rule for `UserMenu`, `MembersSection`, and
+  `CalendarMeetingRow` (each previously had its own palette, so the same person could
+  render different colours in different places).
+- **`lib/calendar-date.ts`** (`parseCalendarDate` / `parseCalendarMs`, ScrumAgent-7xk)
+  and **`components/shell/ProjectMeetingsProvider`** (`useProjectMeetings`,
+  ScrumAgent-iar) — see [[modules/calendar-sync]]. The provider is the single
+  per-project calendar fan-out behind the Home stat/recent cards, the sidebar
+  meetings badge, and `/meetings`.
+
 ## Design language
 
 See [[domains/design]] and [[sources/design-brief]]. Brand: **Kabanchik**. Light B2B SaaS aesthetic — calm, trustworthy, operational, **no dark mode**.

@@ -10,6 +10,32 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-16 — DRY/altitude refactors from the code review (ScrumAgent-iar, -1yf, -7xk, -44x, -zis)
+
+Five behaviour-preserving refactors filed by the same review. Quality gates green:
+backend `pytest` (148), frontend `tsc`, Playwright e2e (68 passing; the only reds are
+the pre-existing login/auth specs that assume a production server but ran against the
+local `dev:preview` one — env, not code).
+
+- **`-1yf` backend access gate**: `backend/app/routers/projects.py` now resolves
+  per-project access through one dependency, `require_project_access`, and the
+  `agent_preview` see-all bypass through one `can_access_all_projects` (consulted by
+  both that gate **and** `list_projects`). Removed the per-route
+  `settings=Depends(get_settings)` plumbing + the duplicate bypass branch + the
+  `_can_access_project`/`_get_member_project` helpers. A new `/{project_id}/…`
+  endpoint now inherits access just by depending on the gate.
+- **`-iar` meetings fan-out**: new `ProjectMeetingsProvider` (mounted in `AppShell`)
+  fetches each project's calendar once and feeds `HomeMeetingsStat`,
+  `RecentMeetingsLive`, the Sidebar badge, and `/meetings`. Removed each component's
+  own `listProjects` + fan-out; the project set comes from `ActiveProjectProvider`
+  (`Project` gained `color`). See [[modules/calendar-sync]].
+- **`-7xk` date parser**: `lib/calendar-date.ts` replaces five hand-rolled all-day
+  parse copies. **`-44x` avatar**: `lib/avatar.ts` (one palette + rule) replaces three
+  copies (`UserMenu`/`MembersSection`/`CalendarMeetingRow`). **`-zis` identity**:
+  `lib/use-current-user.ts` (`useCurrentUser`) replaces the duplicated token→`/auth/me`
+  resolution; after `-iar` only the Home greeting and `UserMenu` still need it. See
+  [[domains/frontend]] §Shared client helpers.
+
 ## 2026-06-16 — Code-review fixes: meetings count, recent list, home header, backend hardening (ScrumAgent-y6a, -oqo, -hky, -02t)
 
 A review of the 2026-06-15/16 commits surfaced correctness bugs in the freshly

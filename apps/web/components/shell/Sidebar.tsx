@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
-import { api, type CalendarMeeting } from "@/lib/api";
 import { weeklyMeetingStats } from "@/lib/meeting-stats";
 import { NAV } from "@/lib/nav";
 import { useActiveProject } from "./ActiveProjectProvider";
+import { useProjectMeetings } from "./ProjectMeetingsProvider";
 import { UserMenu } from "./UserMenu";
 
 const HOME_HREF = "/";
@@ -23,49 +23,19 @@ export interface SidebarProps {
 export function Sidebar({ onSwitchProject }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname() ?? HOME_HREF;
-  const { activeProject, projects, status } = useActiveProject();
-  const [meetingsBadge, setMeetingsBadge] = useState(0);
-  // How many projects' calendars failed to load for the current badge count.
-  const [meetingsFailed, setMeetingsFailed] = useState(0);
+  const { activeProject, status } = useActiveProject();
+  const { meetings, failures } = useProjectMeetings();
+
+  // Live current-week count from the shared per-project calendar fan-out.
+  const meetingsBadge = useMemo(
+    () => weeklyMeetingStats(meetings, new Date()).currentWeek,
+    [meetings],
+  );
+  // Only hard failures (not 409 "no calendar connected") leave the count
+  // possibly-incomplete; flag the badge when any occurred.
+  const meetingsFailed = failures.filter((f) => f.status !== 409).length;
 
   const goHome = () => router.push(HOME_HREF);
-
-  useEffect(() => {
-    let active = true;
-
-    if (projects.length === 0) {
-      setMeetingsBadge(0);
-      setMeetingsFailed(0);
-      return () => {
-        active = false;
-      };
-    }
-
-    (async () => {
-      const results = await Promise.allSettled(
-        projects.map((p) => api.listProjectMeetings(p.id)),
-      );
-      if (!active) return;
-
-      const meetings = results
-        .filter(
-          (r): r is PromiseFulfilledResult<CalendarMeeting[]> =>
-            r.status === "fulfilled",
-        )
-        .flatMap((r) => r.value);
-      setMeetingsFailed(results.filter((r) => r.status === "rejected").length);
-      setMeetingsBadge(weeklyMeetingStats(meetings, new Date()).currentWeek);
-    })().catch(() => {
-      if (active) {
-        setMeetingsBadge(0);
-        setMeetingsFailed(0);
-      }
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [projects]);
 
   // While projects are still loading, or when the fetch failed, don't render the
   // NO_PROJECT sentinel ("No project selected") in the switcher — on a backend

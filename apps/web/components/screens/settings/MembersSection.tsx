@@ -5,22 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge, type BadgeVariant } from "@/components/ui/Badge";
 import { Icon } from "@/components/ui/Icon";
-import {
-  ApiError,
-  api,
-  type ProjectMemberOut,
-  type ProjectOut,
-} from "@/lib/api";
-import type { Participant } from "@/lib/types";
-
-const AVATAR_COLORS = [
-  "#0077e6",
-  "#10b981",
-  "#f59e0b",
-  "#ef4444",
-  "#8b5cf6",
-  "#0f766e",
-];
+import { ApiError, api, type ProjectOut } from "@/lib/api";
+import { toParticipant } from "@/lib/avatar";
 
 function roleLabel(role: string): string {
   return role
@@ -31,33 +17,6 @@ function roleLabel(role: string): string {
 
 function roleBadge(role: string): BadgeVariant {
   return role === "admin" ? "brand" : "neutral";
-}
-
-function initialsFor(value: string): string {
-  const parts = value
-    .replace(/@.*$/, "")
-    .split(/[.\s_-]+/)
-    .filter(Boolean);
-  const initials = parts
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join("");
-  return initials || "U";
-}
-
-function colorFor(value: string): string {
-  let hash = 0;
-  for (const char of value) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
-}
-
-function participantFor(member: ProjectMemberOut): Participant {
-  const name = member.name ?? member.email;
-  return {
-    name,
-    initials: initialsFor(name),
-    color: colorFor(member.email),
-  };
 }
 
 export function MembersSection(): JSX.Element {
@@ -160,7 +119,7 @@ export function MembersSection(): JSX.Element {
             </thead>
             <tbody>
               {members.map((member) => {
-                const participant = participantFor(member);
+                const participant = toParticipant(member.email, member.name);
                 return (
                   <tr key={member.user_id}>
                     <td>

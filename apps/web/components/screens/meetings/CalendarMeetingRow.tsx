@@ -3,7 +3,8 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
 import { StatusPill } from "@/components/ui/StatusPill";
 import type { CalendarMeeting } from "@/lib/api";
-import type { Participant } from "@/lib/types";
+import { toParticipant } from "@/lib/avatar";
+import { parseCalendarDate } from "@/lib/calendar-date";
 
 export interface CalendarMeetingVM extends CalendarMeeting {
   projectName: string;
@@ -15,44 +16,9 @@ export interface CalendarMeetingRowProps {
   meeting: CalendarMeetingVM;
 }
 
-const AVATAR_COLORS = [
-  "#6366f1",
-  "#0ea5e9",
-  "#10b981",
-  "#f59e0b",
-  "#ef4444",
-  "#8b5cf6",
-  "#14b8a6",
-  "#f97316",
-];
-
-function attendeeParticipant(
-  email: string | null,
-  displayName: string | null,
-): Participant {
-  const name = displayName ?? email ?? "?";
-  const source = email ?? name;
-  const words = name.replace(/@.*$/, "").split(/[\s._-]+/).filter(Boolean);
-  const initials = (
-    words.length >= 2
-      ? words[0][0] + words[words.length - 1][0]
-      : name.slice(0, 2)
-  ).toUpperCase();
-  let hash = 0;
-  for (let i = 0; i < source.length; i++) {
-    hash = (hash * 31 + source.charCodeAt(i)) | 0;
-  }
-  return {
-    name,
-    initials,
-    color: AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length],
-  };
-}
-
 function formatDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso.length === 10 ? `${iso}T00:00:00` : iso);
-  return d.toLocaleDateString("en-CA"); // YYYY-MM-DD
+  const d = parseCalendarDate(iso);
+  return d ? d.toLocaleDateString("en-CA") : "—"; // YYYY-MM-DD
 }
 
 function formatTime(m: CalendarMeetingVM): string {
@@ -115,7 +81,7 @@ export function CalendarMeetingRow({
           {shown.map((a, i) => (
             <Avatar
               key={a.email ?? i}
-              participant={attendeeParticipant(a.email, a.display_name)}
+              participant={toParticipant(a.email, a.display_name)}
               size={26}
             />
           ))}

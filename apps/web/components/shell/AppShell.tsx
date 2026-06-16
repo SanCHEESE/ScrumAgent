@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { LiveBar } from "./LiveBar";
+import { ProjectMeetingsProvider } from "./ProjectMeetingsProvider";
 import { ProjectSwitcherModal } from "./ProjectSwitcherModal";
 import { Sidebar } from "./Sidebar";
 import { TweaksPanel } from "@/components/tweaks/TweaksPanel";
@@ -23,22 +24,26 @@ export function AppShell({ children }: AppShellProps) {
   const [projectSwitcherOpen, setProjectSwitcherOpen] = useState(false);
 
   return (
-    <div
-      className={`app ${navCollapsed ? "nav-collapsed" : ""}`}
-      data-screen-label={pathname}
-    >
-      <LiveBar />
-      <Sidebar onSwitchProject={() => setProjectSwitcherOpen(true)} />
-      <main className="main" data-screen-label={`main-${pathname}`}>
-        {children}
-      </main>
-      <ProjectSwitcherModal
-        open={projectSwitcherOpen}
-        onClose={() => setProjectSwitcherOpen(false)}
-      />
-      {/* Floating tweaks panel — only mounts inside the shell layout, so
-          /login (which uses a sibling layout) doesn't render it. */}
-      <TweaksPanel />
-    </div>
+    // One fan-out of every project's calendar, shared by the Sidebar badge and
+    // the home/meetings consumers (ScrumAgent-iar).
+    <ProjectMeetingsProvider>
+      <div
+        className={`app ${navCollapsed ? "nav-collapsed" : ""}`}
+        data-screen-label={pathname}
+      >
+        <LiveBar />
+        <Sidebar onSwitchProject={() => setProjectSwitcherOpen(true)} />
+        <main className="main" data-screen-label={`main-${pathname}`}>
+          {children}
+        </main>
+        <ProjectSwitcherModal
+          open={projectSwitcherOpen}
+          onClose={() => setProjectSwitcherOpen(false)}
+        />
+        {/* Floating tweaks panel — only mounts inside the shell layout, so
+            /login (which uses a sibling layout) doesn't render it. */}
+        <TweaksPanel />
+      </div>
+    </ProjectMeetingsProvider>
   );
 }

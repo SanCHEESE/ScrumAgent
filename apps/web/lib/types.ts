@@ -8,6 +8,8 @@ export interface Project {
   id: string;
   name: string;
   email: string;
+  /** Project accent colour (hex), when known. */
+  color?: string;
   /** Human-readable last sync timestamp, or null if never synced. */
   lastSync: string | null;
   status: ProjectStatus;

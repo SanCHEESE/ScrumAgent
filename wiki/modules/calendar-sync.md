@@ -72,6 +72,29 @@ Follow-up fixes to the live read path above:
   the Home subtitle and the sidebar project switcher show a real error affordance
   instead of the misleading "No project selected" sentinel when `GET /projects` fails.
 
+## Refactor: single meetings fan-out + shared date parser (2026-06-16 — ScrumAgent-iar / -7xk)
+
+Altitude/reuse follow-ups to the read path above. Behaviour-preserving (e2e green):
+
+- **`ProjectMeetingsProvider`** (`apps/web/components/shell/ProjectMeetingsProvider.tsx`,
+  mounted in `AppShell`) now fetches each project's calendar **exactly once** and
+  shares it with all four consumers — `HomeMeetingsStat`, `RecentMeetingsLive`, the
+  Sidebar badge, and `/meetings`. Previously each ran its own
+  `listProjects → Promise.allSettled(listProjectMeetings)` (≈3× `listProjects` +
+  3×N `listProjectMeetings` on one Home render) with drifted dedup/cancelled/error
+  handling. The provider dedups by event id, drops cancelled events, and reads the
+  project set from `ActiveProjectProvider.projects` (no per-component `listProjects`
+  refetch — `Project` now carries `color`). It exposes per-project **failures with
+  their HTTP status**, so each consumer classifies them itself: `/meetings` lists
+  every failure (incl. 409 "reconnect"), `RecentMeetingsLive` splits 409
+  (needs-connection) from hard errors, and the stat/badge treat 409 as "no
+  meetings" (not a load failure) — only hard failures flag the count as incomplete.
+- **`lib/calendar-date.ts`** (`parseCalendarDate` / `parseCalendarMs`) is the one
+  parser for the all-day-vs-dateTime idiom (`YYYY-MM-DD` → local midnight, else the
+  RFC 3339 dateTime), with consistent null handling. Replaces five hand-rolled
+  copies (one returned `null`, another `0`) across `RecentMeetingsLive`,
+  `meeting-stats.ts`, `/meetings`, `ProjectsListLive`, and `CalendarMeetingRow`.
+
 ## Still planned
 
 - Filter/flag events without Meet links for the agent join flow.

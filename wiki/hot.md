@@ -1,27 +1,28 @@
 ---
 type: meta
 title: "Hot Cache"
-updated: 2026-06-16T13:30:00+04:00
+updated: 2026-06-16T16:00:00+04:00
 tags: [meta, hot-cache]
 ---
 
 # Recent Context
 
 ## Last Updated
-2026-06-16. **Code-review fixes on the live-data work (`ScrumAgent-y6a`,
-`ScrumAgent-oqo`, `ScrumAgent-hky`, `ScrumAgent-02t`).** A review of the
-2026-06-15/16 commits found correctness bugs in the freshly shipped Home/meetings
-live data; fixed via four parallel agents + one integration fix. Meetings counts
-now dedup events by id and use DST-safe week bounds, and surface partial fetch
-failures instead of silently under-reporting. The Recent meetings card
-distinguishes empty / needs-connection (409) / hard error, drops cancelled
-events, and dedups rows. The Home greeting is hydration-safe (computed post-mount)
-and `ActiveProjectProvider` now exposes a `loading/ready/error` status so the Home
-subtitle and the sidebar switcher show a real error affordance instead of the
-"No project selected" sentinel on a `GET /projects` failure. Backend:
-`_ensure_preview_user` tolerates concurrent inserts/dupes and `_serialize` skips
-orphaned memberships. Compose now honors the documented `NEXT_PUBLIC_APP_ENVIRONMENT`
-knob. Five cleanup/altitude findings were filed (see Open threads).
+2026-06-16. **DRY/altitude refactors from the code review (`ScrumAgent-iar`,
+`-1yf`, `-7xk`, `-44x`, `-zis`).** The five cleanup findings the prior review filed
+are now done — all behaviour-preserving. **Backend (`-1yf`)**: per-project access is
+one FastAPI dependency, `require_project_access`, and the `agent_preview` see-all
+bypass is one `can_access_all_projects` consulted by **both** that gate and
+`list_projects` (no per-route `settings` plumbing, no duplicate bypass). **Frontend**:
+a single `ProjectMeetingsProvider` (in `AppShell`) fans out each project's calendar
+**once** for the Home stat/recent cards, the sidebar badge, and `/meetings` (`-iar`,
+project set from `ActiveProjectProvider`, which now carries `color`);
+`lib/calendar-date.ts` is the one all-day date parser (`-7xk`); `lib/avatar.ts` is the
+one initials/colour/palette helper for `UserMenu`/`MembersSection`/`CalendarMeetingRow`
+(`-44x`); `lib/use-current-user.ts` (`useCurrentUser`) is the one signed-in identity
+resolver — after `-iar` removed the meetings consumers' token-gating, only the Home
+greeting and `UserMenu` still need it (`-zis`). Gates green: backend `pytest` (148),
+`tsc`, e2e (68 pass; the only reds are the known login/auth-vs-`dev:preview` env specs).
 
 ## Key Recent Facts
 - Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker
@@ -35,6 +36,10 @@ knob. Five cleanup/altitude findings were filed (see Open threads).
   `apps/web`); backend `pytest`. ESLint not configured.
 
 ## What just shipped (same day, newest first)
+- **DRY/altitude refactors** (`iar`/`1yf`/`7xk`/`44x`/`zis`): single meetings
+  fan-out provider, centralized backend project-access gate, and shared
+  calendar-date / avatar / `useCurrentUser` helpers. See [[modules/calendar-sync]],
+  [[modules/project-provisioning]], [[domains/frontend]] §Shared client helpers, `log.md`.
 - **Code-review fixes** (`y6a`/`oqo`/`hky`/`02t`): see Last Updated. Details in
   [[modules/calendar-sync]] "Hardening (2026-06-16 code review)" and `log.md`.
 - **Upload recording disabled** (`dik`): `/meetings` Upload CTA shown but disabled
@@ -64,10 +69,6 @@ knob. Five cleanup/altitude findings were filed (see Open threads).
   off (so `docker compose config` won't render).
 
 ## Open threads
-- **Cleanup/altitude refactors from the review** (filed, not done): `iar` shared
-  per-project meetings fan-out hook; `1yf` centralize agent_preview see-all bypass;
-  `7xk` shared calendar date-parse helper; `44x` unify avatar helpers; `zis`
-  centralize signed-in-user resolution.
 - Mock data still drives: meeting detail page, Home Jira/Notion stats, pending
   updates, agent activity, chat (`r0k`). Alembic pending (`soe`). `PendingOAuth`
   rows never expire (`2of`). `.gitignore` glob breaks `rg` (`n60`).

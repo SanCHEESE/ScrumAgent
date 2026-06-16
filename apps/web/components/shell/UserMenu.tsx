@@ -1,59 +1,12 @@
 "use client";
 
-import { useEffect, useState, type JSX } from "react";
+import type { JSX } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
-import { ApiError, api, type MeResponse } from "@/lib/api";
-import {
-  decodeTokenEmail,
-  getToken,
-  isAgentPreviewEnvironment,
-  logout,
-} from "@/lib/auth";
-import type { Participant } from "@/lib/types";
-
-// Deterministic avatar colour per user, drawn from the same palette the mock
-// participants use so real and seeded users look consistent.
-const AVATAR_COLORS = [
-  "#0077e6",
-  "#005fc4",
-  "#10b981",
-  "#f59e0b",
-  "#ef4444",
-  "#8b5cf6",
-] as const;
-
-function pickColor(seed: string): string {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i += 1) {
-    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
-  }
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
-}
-
-function initialsFrom(name: string | null, email: string): string {
-  const trimmed = (name ?? "").trim();
-  if (trimmed) {
-    return trimmed
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((part) => part[0])
-      .join("")
-      .toUpperCase();
-  }
-  const local = email.split("@")[0] || email;
-  return local.slice(0, 2).toUpperCase() || "?";
-}
-
-function toParticipant(email: string, name: string | null): Participant {
-  const display = (name && name.trim()) || email || "Account";
-  return {
-    name: display,
-    initials: initialsFrom(name, email),
-    color: pickColor(email || display),
-  };
-}
+import { logout } from "@/lib/auth";
+import { toParticipant } from "@/lib/avatar";
+import { useCurrentUser } from "@/lib/use-current-user";
 
 /**
  * Sidebar-footer account control (ScrumAgent-9pf).
@@ -66,39 +19,9 @@ function toParticipant(email: string, name: string | null): Participant {
  */
 export function UserMenu(): JSX.Element {
   const router = useRouter();
-  const [hasToken, setHasToken] = useState(false);
-  const [tokenEmail, setTokenEmail] = useState<string | null>(null);
-  const [user, setUser] = useState<MeResponse | null>(null);
+  const { isAuthenticated, user, email } = useCurrentUser();
 
-  useEffect(() => {
-    const token = getToken();
-    const previewMode = isAgentPreviewEnvironment();
-    if (!token && !previewMode) {
-      setHasToken(false);
-      return;
-    }
-    setHasToken(true);
-    setTokenEmail(token ? decodeTokenEmail(token) : null);
-
-    let active = true;
-    api
-      .me()
-      .then((me) => {
-        if (active) setUser(me);
-      })
-      .catch((err) => {
-        // 401 → the API client already cleared the token and redirected.
-        // Other failures (e.g. backend offline) keep the JWT-derived label.
-        if (active && err instanceof ApiError && err.status === 401) {
-          setHasToken(false);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  if (!hasToken) {
+  if (!isAuthenticated) {
     return (
       <button
         type="button"
@@ -113,8 +36,7 @@ export function UserMenu(): JSX.Element {
     );
   }
 
-  const email = user?.email ?? tokenEmail ?? "";
-  const participant = toParticipant(email, user?.name ?? null);
+  const participant = toParticipant(email, user?.name ?? null, "Account");
   const showEmail = email && email !== participant.name;
 
   return (

@@ -1,10 +1,11 @@
 "use client";
 
 // Meetings — live Google Calendar events of each project's agent account
-// (ScrumAgent-m5x). Replaces the mock archive: we list every user project and
-// merge the agent calendars, split into Upcoming / Past.
+// (ScrumAgent-m5x). The per-project calendar fan-out is shared with the Home
+// stat/recent cards and the sidebar badge via ProjectMeetingsProvider
+// (ScrumAgent-iar); this page just projects it into the Upcoming/Past table.
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
@@ -12,7 +13,8 @@ import {
   CalendarMeetingRow,
   type CalendarMeetingVM,
 } from "@/components/screens/meetings/CalendarMeetingRow";
-import { ApiError, api } from "@/lib/api";
+import { useProjectMeetings } from "@/components/shell/ProjectMeetingsProvider";
+import { parseCalendarMs } from "@/lib/calendar-date";
 
 type Filter = "all" | "upcoming" | "past";
 
@@ -22,94 +24,37 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: "past", label: "Past" },
 ];
 
-interface LoadState {
-  loading: boolean;
-  meetings: CalendarMeetingVM[];
-  /** Per-project load failures, e.g. revoked Google grant. */
-  problems: string[];
-  /** No projects at all → point at the wizard instead of an empty table. */
-  noProjects: boolean;
-}
-
-const INITIAL: LoadState = {
-  loading: true,
-  meetings: [],
-  problems: [],
-  noProjects: false,
-};
-
 function startMs(m: CalendarMeetingVM): number {
-  if (!m.start) return 0;
-  return new Date(m.start.length === 10 ? `${m.start}T00:00:00` : m.start).getTime();
+  return parseCalendarMs(m.start) ?? 0;
 }
 
 export default function MeetingsPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
-  const [state, setState] = useState<LoadState>(INITIAL);
+  const { meetings, failures, loading, noProjects, projectsError } =
+    useProjectMeetings();
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const projects = await api.listProjects();
-        if (projects.length === 0) {
-          if (!cancelled)
-            setState({ ...INITIAL, loading: false, noProjects: true });
-          return;
-        }
-        const now = Date.now();
-        const results = await Promise.allSettled(
-          projects.map(async (p) => {
-            const events = await api.listProjectMeetings(p.id);
-            return events.map<CalendarMeetingVM>((e) => ({
-              ...e,
-              projectName: p.name,
-              projectColor: p.color,
-              upcoming: e.start
-                ? new Date(
-                    e.start.length === 10 ? `${e.start}T00:00:00` : e.start,
-                  ).getTime() >= now
-                : false,
-            }));
-          }),
-        );
-        if (cancelled) return;
-        const meetings = results
-          .filter(
-            (r): r is PromiseFulfilledResult<CalendarMeetingVM[]> =>
-              r.status === "fulfilled",
-          )
-          .flatMap((r) => r.value);
-        const problems = results
-          .map((r, i) =>
-            r.status === "rejected"
-              ? `${projects[i].name}: ${
-                  r.reason instanceof ApiError
-                    ? r.reason.message
-                    : "could not load calendar"
-                }`
-              : null,
-          )
-          .filter((p): p is string => p !== null);
-        setState({ loading: false, meetings, problems, noProjects: false });
-      } catch (e) {
-        if (cancelled) return;
-        setState({
-          ...INITIAL,
-          loading: false,
-          problems: [e instanceof ApiError ? e.message : "Could not load projects"],
-        });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Tag each shared event with whether it is still upcoming (the table splits
+  // on it). The provider already deduped by id and dropped cancelled events.
+  const vms = useMemo<CalendarMeetingVM[]>(() => {
+    const now = Date.now();
+    return meetings.map((m) => ({ ...m, upcoming: (parseCalendarMs(m.start) ?? 0) >= now }));
+  }, [meetings]);
+
+  // Surface every per-project failure (incl. 409 "reconnect the agent account")
+  // as its own alert, exactly as before; a failed project listing collapses to
+  // a single notice.
+  const problems = useMemo(
+    () =>
+      projectsError
+        ? ["Could not load projects"]
+        : failures.map((f) => `${f.projectName}: ${f.message}`),
+    [projectsError, failures],
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const subset = state.meetings.filter((m) => {
+    const subset = vms.filter((m) => {
       if (filter === "upcoming" && !m.upcoming) return false;
       if (filter === "past" && m.upcoming) return false;
       if (
@@ -124,16 +69,16 @@ export default function MeetingsPage() {
     return subset.sort((a, b) =>
       filter === "upcoming" ? startMs(a) - startMs(b) : startMs(b) - startMs(a),
     );
-  }, [state.meetings, filter, query]);
+  }, [vms, filter, query]);
 
   const counts = useMemo(() => {
-    const upcoming = state.meetings.filter((m) => m.upcoming).length;
+    const upcoming = vms.filter((m) => m.upcoming).length;
     return {
-      all: state.meetings.length,
+      all: vms.length,
       upcoming,
-      past: state.meetings.length - upcoming,
+      past: vms.length - upcoming,
     };
-  }, [state.meetings]);
+  }, [vms]);
 
   return (
     <div className="page">
@@ -162,7 +107,7 @@ export default function MeetingsPage() {
         </div>
       </div>
 
-      {state.problems.map((p) => (
+      {problems.map((p) => (
         <div className="project-error" role="alert" key={p}>
           <Icon name="alert" size={12} />
           {p}
@@ -194,12 +139,12 @@ export default function MeetingsPage() {
           <div>Status</div>
           <div></div>
         </div>
-        {state.loading ? (
+        {loading ? (
           <div className="empty">
             <div className="empty-title">Loading calendar…</div>
             <div className="empty-sub">Fetching events from Google Calendar.</div>
           </div>
-        ) : state.noProjects ? (
+        ) : noProjects ? (
           <div className="empty">
             <div className="empty-title">No projects yet</div>
             <div className="empty-sub">

@@ -142,6 +142,11 @@ class MemberOut(BaseModel):
     role: str
 
 
+class PendingMemberOut(BaseModel):
+    email: str
+    role: str
+
+
 class ProjectOut(BaseModel):
     id: str
     name: str
@@ -155,6 +160,7 @@ class ProjectOut(BaseModel):
     notion_section_url: str | None
     notion_page_id: str | None
     members: list[MemberOut]
+    pending_members: list[PendingMemberOut]
     created_at: datetime
 
 
@@ -983,6 +989,10 @@ def _serialize(project: Project, db: Session) -> ProjectOut:
                 role=member.role.value,
             )
         )
+    pending_members = [
+        PendingMemberOut(email=p.email, role=p.role.value)
+        for p in project.pending_members
+    ]
     return ProjectOut(
         id=project.id,
         name=project.name,
@@ -996,6 +1006,7 @@ def _serialize(project: Project, db: Session) -> ProjectOut:
         notion_section_url=project.notion_section_url,
         notion_page_id=project.notion_page_id,
         members=members,
+        pending_members=pending_members,
         created_at=project.created_at,
     )
 

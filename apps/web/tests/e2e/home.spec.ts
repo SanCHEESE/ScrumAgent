@@ -22,16 +22,30 @@ const PROJECT = {
   created_at: "2026-06-01T00:00:00Z",
 };
 
+const FIXED_NOW = new Date("2026-06-16T12:00:00.000Z");
+
 function isoIn(hours: number): string {
-  return new Date(Date.now() + hours * 3600_000).toISOString();
+  return new Date(FIXED_NOW.getTime() + hours * 3600_000).toISOString();
 }
 
 const LIVE_MEETINGS = [
   {
-    id: "evt-home-new",
-    title: "Calendar Design Review",
-    start: isoIn(2),
-    end: isoIn(3),
+    id: "evt-home-past",
+    title: "Calendar Retro",
+    start: isoIn(-1),
+    end: isoIn(-0.5),
+    all_day: false,
+    organizer_email: "agent@municorn.com",
+    attendees: [],
+    meet_link: null,
+    html_link: "https://calendar.google.com/event?eid=evt-home-past",
+    status: "confirmed",
+  },
+  {
+    id: "evt-home-later",
+    title: "Sprint Planning",
+    start: isoIn(6),
+    end: isoIn(7),
     all_day: false,
     organizer_email: "agent@municorn.com",
     attendees: [
@@ -42,20 +56,20 @@ const LIVE_MEETINGS = [
         organizer: false,
       },
     ],
-    meet_link: "https://meet.google.com/new-home",
-    html_link: "https://calendar.google.com/event?eid=evt-home-new",
+    meet_link: "https://meet.google.com/later-home",
+    html_link: "https://calendar.google.com/event?eid=evt-home-later",
     status: "confirmed",
   },
   {
-    id: "evt-home-old",
-    title: "Calendar Retro",
-    start: isoIn(-24),
-    end: isoIn(-23),
+    id: "evt-home-soon",
+    title: "Team Standup",
+    start: isoIn(1),
+    end: isoIn(2),
     all_day: false,
     organizer_email: "agent@municorn.com",
     attendees: [],
-    meet_link: null,
-    html_link: "https://calendar.google.com/event?eid=evt-home-old",
+    meet_link: "https://meet.google.com/soon-home",
+    html_link: "https://calendar.google.com/event?eid=evt-home-soon",
     status: "confirmed",
   },
 ];
@@ -144,7 +158,10 @@ test.describe("Home dashboard", () => {
     await expect(page.locator(".card-grid-2")).toBeVisible();
   });
 
-  test("Recent meetings renders live calendar events", async ({ page }) => {
+  test("Recent meetings shows nearest scheduled calendar events", async ({
+    page,
+  }) => {
+    await page.clock.setFixedTime(FIXED_NOW);
     await mockCalendarApi(page);
     await page.goto("/");
 
@@ -152,8 +169,12 @@ test.describe("Home dashboard", () => {
       .locator(".card")
       .filter({ has: page.getByRole("heading", { name: "Recent meetings" }) })
       .first();
-    await expect(recent.getByText("Calendar Design Review")).toBeVisible();
-    await expect(recent.getByText("Calendar Retro")).toBeVisible();
+    await expect(recent.locator(".meeting-compact-title")).toHaveText([
+      "Team Standup",
+      "Sprint Planning",
+    ]);
+    await expect(recent.getByText("Calendar Retro")).toHaveCount(0);
+    await expect(recent.getByText("Scheduled")).toHaveCount(2);
     await expect(recent.getByText("Daily Standup")).toHaveCount(0);
   });
 

@@ -207,13 +207,15 @@ export function RecentMeetingsLive(): JSX.Element {
         );
         if (!active) return;
 
+        const now = Date.now();
         const meetings = results
           .filter(
             (r): r is PromiseFulfilledResult<RecentMeeting[]> =>
               r.status === "fulfilled",
           )
           .flatMap((r) => r.value)
-          .sort((a, b) => eventStartMs(b) - eventStartMs(a))
+          .filter((m) => eventStartMs(m) >= now)
+          .sort((a, b) => eventStartMs(a) - eventStartMs(b))
           .slice(0, 3);
 
         const problems = results.filter((r) => r.status === "rejected").length;

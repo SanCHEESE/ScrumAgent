@@ -1,22 +1,22 @@
 ---
 type: meta
 title: "Hot Cache"
-updated: 2026-06-16T11:31:54+04:00
+updated: 2026-06-16T11:37:53+04:00
 tags: [meta, hot-cache]
 ---
 
 # Recent Context
 
 ## Last Updated
-2026-06-16. **Home greeting identity/time fix (`ScrumAgent-qiw`).** The Home
-page title no longer hardcodes `Good morning, Alice`; it resolves the current
-user through `/auth/me` (with a JWT-email fallback while the request is pending)
-and chooses `Good morning` / `Good afternoon` / `Good evening` from the browser's
-local hour. In `agent_preview`, this means the visible Home title uses the local
-fake dev user (`Dev User`, `dev@municorn.com`) without borrowing a production
-token. The explicit preview/production split from `ScrumAgent-byz` remains:
-production requires env-scoped bearer JWTs and member-only project access, while
-agent preview can inspect all local projects.
+2026-06-16. **Home dashboard polish (`ScrumAgent-qiw`, `ScrumAgent-ec9`).** The
+Home page title no longer hardcodes `Good morning, Alice`; it resolves the
+current user through `/auth/me` (with a JWT-email fallback while the request is
+pending) and chooses `Good morning` / `Good afternoon` / `Good evening` from the
+browser's local hour. The Home **Recent meetings** card now shows only scheduled
+future calendar events, sorted soonest-first, so past "recent" meetings no
+longer displace upcoming ones. The explicit preview/production split from
+`ScrumAgent-byz` remains: production requires env-scoped bearer JWTs and
+member-only project access, while agent preview can inspect all local projects.
 
 ## Key Recent Facts
 - Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker
@@ -28,6 +28,8 @@ agent preview can inspect all local projects.
 - Canonical plan: [[sources/mvp-v2-plan]]. Tracking: `bd`. TDD mandatory.
 
 ## What just shipped (same day, newest first)
+- **Home Recent meetings ordering** (`ec9`): card filters to future scheduled
+  calendar events and sorts them by nearest start date ascending.
 - **Home greeting** (`qiw`): Home title now uses the current `/auth/me` user and
   browser time of day instead of hardcoded `Alice`.
 - **Environment split** (`byz`): production vs agent preview mode, env-scoped JWT

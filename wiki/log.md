@@ -10,6 +10,19 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-16 — Home Recent meetings shows nearest scheduled events (ScrumAgent-ec9)
+
+Home's **Recent meetings** card now filters live Google Calendar rows to future
+events only and sorts them by start time ascending before applying the existing
+three-row cap. The card therefore shows the nearest scheduled meetings rather
+than the newest calendar events overall, so past meetings no longer appear just
+because they are recent.
+
+Verification: watched the Home e2e fail with mixed past/future fixtures
+(`Sprint Planning`, `Team Standup`, and past `Calendar Retro` rendered in the old
+order), then pass after the component fix. `tsc --noEmit` is green, and the
+in-app browser showed only Scheduled rows ordered by upcoming dates.
+
 ## 2026-06-16 — Home greeting uses current user and time of day (ScrumAgent-qiw)
 
 Home's page title no longer hardcodes `Good morning, Alice`. The client now

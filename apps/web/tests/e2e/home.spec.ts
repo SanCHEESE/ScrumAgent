@@ -72,6 +72,18 @@ const LIVE_MEETINGS = [
     html_link: "https://calendar.google.com/event?eid=evt-home-soon",
     status: "confirmed",
   },
+  {
+    id: "evt-home-previous-week",
+    title: "Backlog Grooming",
+    start: isoIn(-96),
+    end: isoIn(-95),
+    all_day: false,
+    organizer_email: "agent@municorn.com",
+    attendees: [],
+    meet_link: null,
+    html_link: "https://calendar.google.com/event?eid=evt-home-previous-week",
+    status: "confirmed",
+  },
 ];
 
 async function mockCalendarApi(page: Page): Promise<void> {
@@ -176,6 +188,19 @@ test.describe("Home dashboard", () => {
     await expect(recent.getByText("Calendar Retro")).toHaveCount(0);
     await expect(recent.getByText("Scheduled")).toHaveCount(2);
     await expect(recent.getByText("Daily Standup")).toHaveCount(0);
+  });
+
+  test("Meetings this week stat uses live calendar counts", async ({ page }) => {
+    await page.clock.setFixedTime(FIXED_NOW);
+    await mockCalendarApi(page);
+    await page.goto("/");
+
+    const stat = page
+      .locator(".stat-card")
+      .filter({ hasText: "Meetings this week" });
+    await expect(stat.locator(".stat-value")).toHaveText("3");
+    await expect(stat.locator(".stat-trend")).toHaveText("+2 vs last week");
+    await expect(stat.getByText("12", { exact: true })).toHaveCount(0);
   });
 
   test("Ask agent header button navigates to /chat", async ({ page }) => {

@@ -8,6 +8,7 @@ import { useActiveProject } from "@/components/shell/ActiveProjectProvider";
 import { UPDATES } from "@/lib/mock-data";
 import { ActivityFeed } from "@/components/screens/home/ActivityFeed";
 import { AskAgentCard } from "@/components/screens/home/AskAgentCard";
+import { HomeMeetingsStat } from "@/components/screens/home/HomeMeetingsStat";
 import { RecentMeetingsLive } from "@/components/screens/home/RecentMeetingsLive";
 import { StatCard } from "@/components/screens/home/StatCard";
 import { UpdateRowCompact } from "@/components/screens/home/UpdateRowCompact";
@@ -198,12 +199,7 @@ export default function HomePage(): JSX.Element {
       </div>
 
       <div className="stat-row">
-        <StatCard
-          label="Meetings this week"
-          value="12"
-          trend="+3"
-          color="brand"
-        />
+        <HomeMeetingsStat />
         <StatCard label="Jira tickets updated" value="28" trend="+6" />
         <StatCard label="Notion pages touched" value="7" trend="+2" />
         <StatCard

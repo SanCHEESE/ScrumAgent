@@ -1,22 +1,20 @@
 ---
 type: meta
 title: "Hot Cache"
-updated: 2026-06-16T11:37:53+04:00
+updated: 2026-06-16T11:47:31+04:00
 tags: [meta, hot-cache]
 ---
 
 # Recent Context
 
 ## Last Updated
-2026-06-16. **Home dashboard polish (`ScrumAgent-qiw`, `ScrumAgent-ec9`).** The
-Home page title no longer hardcodes `Good morning, Alice`; it resolves the
-current user through `/auth/me` (with a JWT-email fallback while the request is
-pending) and chooses `Good morning` / `Good afternoon` / `Good evening` from the
-browser's local hour. The Home **Recent meetings** card now shows only scheduled
-future calendar events, sorted soonest-first, so past "recent" meetings no
-longer displace upcoming ones. The explicit preview/production split from
-`ScrumAgent-byz` remains: production requires env-scoped bearer JWTs and
-member-only project access, while agent preview can inspect all local projects.
+2026-06-16. **Home dashboard polish (`ScrumAgent-qiw`, `ScrumAgent-ec9`,
+`ScrumAgent-9we`).** The Home page title no longer hardcodes
+`Good morning, Alice`; it resolves the current user through `/auth/me` and
+browser local time. Home **Recent meetings** now shows only scheduled future
+calendar events, sorted soonest-first. The **Meetings this week** stat now reads
+live project calendar events too: it counts current-week meetings and compares
+against the previous week instead of rendering the old mock `12 / +3`.
 
 ## Key Recent Facts
 - Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker
@@ -28,6 +26,8 @@ member-only project access, while agent preview can inspect all local projects.
 - Canonical plan: [[sources/mvp-v2-plan]]. Tracking: `bd`. TDD mandatory.
 
 ## What just shipped (same day, newest first)
+- **Home Meetings this week stat** (`9we`): leading Home stat reads live project
+  calendar events, counts the current week, and shows the delta vs previous week.
 - **Home Recent meetings ordering** (`ec9`): card filters to future scheduled
   calendar events and sorts them by nearest start date ascending.
 - **Home greeting** (`qiw`): Home title now uses the current `/auth/me` user and
@@ -61,8 +61,8 @@ member-only project access, while agent preview can inspect all local projects.
 ## Open threads
 - ESLint is not configured in `apps/web` (`next lint` prompts interactively);
   quality gates today are tsc + Playwright.
-- Mock data still drives: meeting detail page, project switcher, Home stats,
-  pending updates, agent activity, chat (`ScrumAgent-r0k`). Alembic
+- Mock data still drives: meeting detail page, project switcher, Home Jira/Notion
+  stats, pending updates, agent activity, chat (`ScrumAgent-r0k`). Alembic
   pending (`ScrumAgent-soe`). `PendingOAuth` rows still never expire.
 - `ScrumAgent-n60` tracks the invalid `.gitignore` glob that makes `rg` print
   parse errors.

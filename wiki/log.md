@@ -10,6 +10,20 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-16 — Home Meetings this week stat uses live calendar data (ScrumAgent-9we)
+
+Home's leading **Meetings this week** stat no longer renders the mock
+`12 / +3 vs last week`. New `HomeMeetingsStat` loads the user's projects, fetches
+each project's live Google Calendar events through the existing
+`GET /projects/{id}/meetings` endpoint, counts non-cancelled events in the
+browser-local Monday-to-Monday current week, and compares against the previous
+week. No-project or failed optional calendar loads stay honest at zero.
+
+Verification: watched the Home e2e fail on the hardcoded `12`, then pass with
+fixtures expecting `3` current-week meetings and `+2 vs last week`. `tsc --noEmit`
+is green, and the in-app browser showed the real local stat as `2` with
+`+1 vs last week`.
+
 ## 2026-06-16 — Home Recent meetings shows nearest scheduled events (ScrumAgent-ec9)
 
 Home's **Recent meetings** card now filters live Google Calendar rows to future

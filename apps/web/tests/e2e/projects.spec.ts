@@ -20,6 +20,13 @@ const PROJECT_FIXTURE = {
   created_at: "2026-06-02T00:00:00Z",
 };
 
+const SECOND_PROJECT_FIXTURE = {
+  ...PROJECT_FIXTURE,
+  id: "p-support",
+  name: "Support Desk",
+  agent_email: "support.scrum.agent@municorn.com",
+};
+
 /**
  * Stub the backend the rewired wizard now talks to. Routes are scoped to the
  * API origin (localhost:8000) so frontend navigations to /projects are untouched.
@@ -120,8 +127,34 @@ test.describe("Projects list", () => {
     mockBackend(context, { projects: [PROJECT_FIXTURE] });
     await page.goto("/projects");
 
-    await expect(page.getByText("E2E Test Squad")).toBeVisible();
+    await expect(
+      page.locator(".project-tile", { hasText: "E2E Test Squad" }),
+    ).toBeVisible();
     await expect(page.locator(".project-tile-add")).toBeVisible();
+  });
+
+  test("sidebar project switcher uses real projects and changes selection", async ({
+    page,
+    context,
+  }) => {
+    mockBackend(context, {
+      projects: [PROJECT_FIXTURE, SECOND_PROJECT_FIXTURE],
+    });
+    await page.goto("/projects");
+
+    const switcher = page.locator(".project-switcher");
+    await expect(switcher).toContainText("E2E Test Squad");
+    await expect(switcher).toContainText(AGENT_EMAIL);
+    await expect(switcher).not.toContainText("Platform Team");
+
+    await switcher.click();
+    const modal = page.getByRole("dialog");
+    await expect(modal.getByText("E2E Test Squad")).toBeVisible();
+    await expect(modal.getByText("Support Desk")).toBeVisible();
+
+    await modal.getByRole("button", { name: /Support Desk/ }).click();
+    await expect(switcher).toContainText("Support Desk");
+    await expect(switcher).toContainText("support.scrum.agent@municorn.com");
   });
 
   test("connected project shows Active pill", async ({ page, context }) => {

@@ -10,6 +10,21 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-16 — Shell project switcher uses real projects (ScrumAgent-iie)
+
+The shell `ActiveProjectProvider` no longer initializes from
+`apps/web/lib/mock-data.ts` `PROJECTS`, which made every screen show the mock
+Platform Team in the sidebar even when `/projects` rendered real API projects.
+It now loads `GET /projects`, maps backend `ProjectOut` rows into the existing
+project view shape, defaults the active project to the first real row, and lets
+`ProjectSwitcherModal` select from that real list. Empty/error cases fall back
+to a neutral "No project selected" placeholder instead of another fake project.
+
+Verification: watched `projects.spec.ts` fail because the sidebar still showed
+`Platform Team`, then pass after the provider change. `tsc --noEmit` is green,
+and the in-app browser on `/projects` showed `eSIM` /
+`telecom.scrum.agent@municorn.com` in the sidebar and switcher modal.
+
 ## 2026-06-16 — Home Meetings this week stat uses live calendar data (ScrumAgent-9we)
 
 Home's leading **Meetings this week** stat no longer renders the mock

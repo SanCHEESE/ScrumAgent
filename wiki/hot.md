@@ -1,20 +1,20 @@
 ---
 type: meta
 title: "Hot Cache"
-updated: 2026-06-16T11:47:31+04:00
+updated: 2026-06-16T11:57:32+04:00
 tags: [meta, hot-cache]
 ---
 
 # Recent Context
 
 ## Last Updated
-2026-06-16. **Home dashboard polish (`ScrumAgent-qiw`, `ScrumAgent-ec9`,
-`ScrumAgent-9we`).** The Home page title no longer hardcodes
-`Good morning, Alice`; it resolves the current user through `/auth/me` and
-browser local time. Home **Recent meetings** now shows only scheduled future
-calendar events, sorted soonest-first. The **Meetings this week** stat now reads
-live project calendar events too: it counts current-week meetings and compares
-against the previous week instead of rendering the old mock `12 / +3`.
+2026-06-16. **Shell and Home live-data polish (`ScrumAgent-iie`,
+`ScrumAgent-qiw`, `ScrumAgent-ec9`, `ScrumAgent-9we`).** The sidebar project
+switcher now loads real projects from `GET /projects`, defaults to the first real
+project, and switches the active project from the real list instead of showing
+the mock Platform Team. The Home page title uses `/auth/me` and browser local
+time; Recent meetings shows scheduled future calendar events; Meetings this week
+counts live calendar rows and compares against the previous week.
 
 ## Key Recent Facts
 - Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker
@@ -26,6 +26,8 @@ against the previous week instead of rendering the old mock `12 / +3`.
 - Canonical plan: [[sources/mvp-v2-plan]]. Tracking: `bd`. TDD mandatory.
 
 ## What just shipped (same day, newest first)
+- **Shell project switcher** (`iie`): active project context reads real projects
+  from `GET /projects` and the switcher modal lists/selects those real rows.
 - **Home Meetings this week stat** (`9we`): leading Home stat reads live project
   calendar events, counts the current week, and shows the delta vs previous week.
 - **Home Recent meetings ordering** (`ec9`): card filters to future scheduled
@@ -61,8 +63,8 @@ against the previous week instead of rendering the old mock `12 / +3`.
 ## Open threads
 - ESLint is not configured in `apps/web` (`next lint` prompts interactively);
   quality gates today are tsc + Playwright.
-- Mock data still drives: meeting detail page, project switcher, Home Jira/Notion
-  stats, pending updates, agent activity, chat (`ScrumAgent-r0k`). Alembic
+- Mock data still drives: meeting detail page, Home Jira/Notion stats, pending
+  updates, agent activity, chat (`ScrumAgent-r0k`). Alembic
   pending (`ScrumAgent-soe`). `PendingOAuth` rows still never expire.
 - `ScrumAgent-n60` tracks the invalid `.gitignore` glob that makes `rg` print
   parse errors.

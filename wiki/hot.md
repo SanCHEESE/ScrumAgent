@@ -1,24 +1,22 @@
 ---
 type: meta
 title: "Hot Cache"
-updated: 2026-06-16T13:05:00+04:00
+updated: 2026-06-16T11:31:54+04:00
 tags: [meta, hot-cache]
 ---
 
 # Recent Context
 
 ## Last Updated
-2026-06-16. **Preview vs production environments (`ScrumAgent-byz`).** Runtime
-access is now explicitly split with `APP_ENVIRONMENT` / `NEXT_PUBLIC_APP_ENVIRONMENT`.
-Default `production` is real-use mode: protected backend routes require bearer
-JWTs, project access stays member-only, and frontend sessions use
-`localStorage["kabanchik.production.token"]`. `agent_preview` is only for local
-Codex/agent previews: the backend can resolve a local preview principal without a
-bearer and project endpoints can inspect all projects; the frontend uses
-`kabanchik.agent_preview.token`, clears legacy/foreign token keys on login, and
-shows the local fake dev user (`Dev User`, `dev@municorn.com`) via `/auth/me`
-without bearer. Real OAuth JWTs now carry an `env` claim and missing/wrong-
-environment tokens 401, so preview and real sessions do not mix.
+2026-06-16. **Home greeting identity/time fix (`ScrumAgent-qiw`).** The Home
+page title no longer hardcodes `Good morning, Alice`; it resolves the current
+user through `/auth/me` (with a JWT-email fallback while the request is pending)
+and chooses `Good morning` / `Good afternoon` / `Good evening` from the browser's
+local hour. In `agent_preview`, this means the visible Home title uses the local
+fake dev user (`Dev User`, `dev@municorn.com`) without borrowing a production
+token. The explicit preview/production split from `ScrumAgent-byz` remains:
+production requires env-scoped bearer JWTs and member-only project access, while
+agent preview can inspect all local projects.
 
 ## Key Recent Facts
 - Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker
@@ -30,6 +28,8 @@ environment tokens 401, so preview and real sessions do not mix.
 - Canonical plan: [[sources/mvp-v2-plan]]. Tracking: `bd`. TDD mandatory.
 
 ## What just shipped (same day, newest first)
+- **Home greeting** (`qiw`): Home title now uses the current `/auth/me` user and
+  browser time of day instead of hardcoded `Alice`.
 - **Environment split** (`byz`): production vs agent preview mode, env-scoped JWT
   and token storage, preview all-project access without real bearer reuse.
 - **Home Recent meetings** (`0i6`): live calendar events on Home via the same
@@ -59,8 +59,8 @@ environment tokens 401, so preview and real sessions do not mix.
 ## Open threads
 - ESLint is not configured in `apps/web` (`next lint` prompts interactively);
   quality gates today are tsc + Playwright.
-- Mock data still drives: meeting detail page, project switcher, Home greeting
-  and stats, pending updates, agent activity, chat (`ScrumAgent-r0k`). Alembic
+- Mock data still drives: meeting detail page, project switcher, Home stats,
+  pending updates, agent activity, chat (`ScrumAgent-r0k`). Alembic
   pending (`ScrumAgent-soe`). `PendingOAuth` rows still never expire.
 - `ScrumAgent-n60` tracks the invalid `.gitignore` glob that makes `rg` print
   parse errors.

@@ -11,6 +11,12 @@ import { AskAgentCard } from "@/components/screens/home/AskAgentCard";
 import { RecentMeetingsLive } from "@/components/screens/home/RecentMeetingsLive";
 import { StatCard } from "@/components/screens/home/StatCard";
 import { UpdateRowCompact } from "@/components/screens/home/UpdateRowCompact";
+import { api } from "@/lib/api";
+import {
+  decodeTokenEmail,
+  getToken,
+  isAgentPreviewEnvironment,
+} from "@/lib/auth";
 
 type LayoutVariant = "split" | "focused" | "classic";
 
@@ -27,6 +33,22 @@ function readLayoutVariant(): LayoutVariant {
   return isLayoutVariant(raw) ? raw : "split";
 }
 
+function greetingForHour(hour: number): string {
+  if (hour >= 5 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+function displayNameFromEmail(email: string | null): string | null {
+  if (!email) return null;
+  const localPart = email.split("@")[0]?.trim();
+  return localPart || email;
+}
+
+function displayNameFromUser(name: string | null, email: string): string {
+  return name?.trim() || displayNameFromEmail(email) || "there";
+}
+
 /**
  * Home dashboard. Renders one of three layout variants ("split" / "focused" /
  * "classic") based on the value persisted by the tweaks panel under
@@ -37,6 +59,7 @@ export default function HomePage(): JSX.Element {
   const router = useRouter();
   const { activeProject } = useActiveProject();
   const [layoutVariant, setLayoutVariant] = useState<LayoutVariant>("split");
+  const [userName, setUserName] = useState<string | null>(null);
 
   useEffect(() => {
     setLayoutVariant(readLayoutVariant());
@@ -54,7 +77,32 @@ export default function HomePage(): JSX.Element {
     };
   }, []);
 
+  useEffect(() => {
+    const token = getToken();
+    const previewMode = isAgentPreviewEnvironment();
+    const tokenEmail = token ? decodeTokenEmail(token) : null;
+
+    setUserName(displayNameFromEmail(tokenEmail));
+    if (!token && !previewMode) return undefined;
+
+    let active = true;
+    api
+      .me()
+      .then((me) => {
+        if (active) setUserName(displayNameFromUser(me.name, me.email));
+      })
+      .catch(() => {
+        // 401 redirects are handled by the API client; keep the token fallback
+        // for transient backend failures.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const pendingUpdates = UPDATES.filter((u) => u.status === "pending");
+  const greeting = greetingForHour(new Date().getHours());
+  const pageTitle = userName ? `${greeting}, ${userName}` : greeting;
 
   const headerActions = (
     <div className="hstack">
@@ -80,7 +128,7 @@ export default function HomePage(): JSX.Element {
       <div className="page">
         <div className="page-header">
           <div>
-            <h1 className="page-title">Good morning, Alice</h1>
+            <h1 className="page-title">{pageTitle}</h1>
             <div className="page-subtitle">
               ScrumAgent analyzed 2 meetings while you were away
             </div>
@@ -140,7 +188,7 @@ export default function HomePage(): JSX.Element {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Good morning, Alice</h1>
+          <h1 className="page-title">{pageTitle}</h1>
           <div className="page-subtitle">
             ScrumAgent has been busy. Here&rsquo;s what&rsquo;s new with{" "}
             <strong>{activeProject.name}</strong>.

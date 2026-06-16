@@ -4,7 +4,7 @@ import { clearStorage } from "./_setup";
 const API = "http://localhost:8000";
 const TOKEN_KEY = "kabanchik.production.token";
 const E2E_TOKEN =
-  "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWFpbCI6ImFsaWNlQG11bmljb3JuLmNvbSJ9.sig";
+  "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWFpbCI6Im1vcmdhbkBtdW5pY29ybi5jb20ifQ.sig";
 
 const PROJECT = {
   id: "p-home",
@@ -36,8 +36,8 @@ const LIVE_MEETINGS = [
     organizer_email: "agent@municorn.com",
     attendees: [
       {
-        email: "alice@municorn.com",
-        display_name: "Alice Kim",
+        email: "morgan@municorn.com",
+        display_name: "Morgan Lee",
         response_status: "accepted",
         organizer: false,
       },
@@ -63,7 +63,7 @@ const LIVE_MEETINGS = [
 async function mockCalendarApi(page: Page): Promise<void> {
   await page.context().route(`${API}/auth/me`, (route) =>
     route.fulfill({
-      json: { id: 1, email: "alice@municorn.com", name: "Alice" },
+      json: { id: 1, email: "morgan@municorn.com", name: "Morgan Lee" },
     }),
   );
   await page.context().route(`${API}/projects`, (route) =>
@@ -82,7 +82,7 @@ async function mockCalendarApi(page: Page): Promise<void> {
 async function mockDefaultApi(page: Page): Promise<void> {
   await page.context().route(`${API}/auth/me`, (route) =>
     route.fulfill({
-      json: { id: 1, email: "alice@municorn.com", name: "Alice" },
+      json: { id: 1, email: "morgan@municorn.com", name: "Morgan Lee" },
     }),
   );
   await page.context().route(`${API}/projects`, (route) =>
@@ -109,11 +109,13 @@ async function setLayoutAndReload(
 
 test.describe("Home dashboard", () => {
   test("greets the user and renders the app shell", async ({ page }) => {
+    await page.clock.setFixedTime(new Date(2026, 5, 16, 15, 0, 0));
     await page.goto("/");
 
     await expect(
-      page.getByRole("heading", { name: "Good morning, Alice" }),
+      page.getByRole("heading", { name: "Good afternoon, Morgan Lee" }),
     ).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Alice/ })).toHaveCount(0);
     // AppShell pieces.
     await expect(page.locator(".live-bar")).toBeVisible();
     await expect(page.locator(".sidebar")).toBeVisible();

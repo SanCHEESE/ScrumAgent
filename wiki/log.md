@@ -10,6 +10,19 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-16 — Home greeting uses current user and time of day (ScrumAgent-qiw)
+
+Home's page title no longer hardcodes `Good morning, Alice`. The client now
+derives `Good morning` / `Good afternoon` / `Good evening` from the browser's
+local hour and resolves the display name from `/auth/me`, using the JWT email
+only as a pending-state fallback. This applies to both split/classic and focused
+Home layouts. In `agent_preview`, the title therefore shows the local fake dev
+user (`Dev User`, `dev@municorn.com`) once `/auth/me` resolves, matching the
+sidebar identity instead of mixing mock and real users.
+
+Verification: watched the focused Home e2e fail on the old heading, then pass
+after the change. Full Home Playwright spec and `tsc --noEmit` green.
+
 ## 2026-06-16 — Split preview and production environments (ScrumAgent-byz)
 
 Added an explicit runtime boundary for Codex/agent preview vs real use.

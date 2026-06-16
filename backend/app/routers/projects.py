@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import HTMLResponse
 from jose import JWTError
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import Settings
@@ -39,6 +40,7 @@ from app.integrations import IntegrationValidators, parse_notion_page_id
 from app.models import (
     LlmUsage,
     PendingOAuth,
+    PendingProjectMember,
     Project,
     ProjectAgentSettings,
     ProjectCredential,
@@ -970,6 +972,75 @@ def get_project(
     project: Project = Depends(require_project_access),
     db: Session = Depends(get_db),
 ) -> ProjectOut:
+    return _serialize(project, db)
+
+
+class MemberInviteIn(BaseModel):
+    # plain str (not EmailStr) — matches MeetingParticipantSuggestionOut.email and
+    # avoids the email-validator dependency; emails come from Google, already valid.
+    email: str = Field(min_length=3)
+    role: ProjectRole = ProjectRole.member
+
+
+class MembersBatchIn(BaseModel):
+    members: list[MemberInviteIn] = Field(min_length=1)
+
+
+@router.post("/{project_id}/members", response_model=ProjectOut)
+def add_project_members(
+    req: MembersBatchIn,
+    project: Project = Depends(require_project_access),
+    db: Session = Depends(get_db),
+) -> ProjectOut:
+    """Batch-add members by email (member-only).
+
+    Email already owned by a registered user → a ``ProjectMember`` now (existing
+    membership left untouched — no surprise role change). Unknown email → a
+    ``PendingProjectMember`` invitation, realized on that person's first login.
+    Idempotent.
+    """
+    for entry in req.members:
+        email = entry.email.strip().lower()
+        if not email:
+            continue
+        existing_user = (
+            db.query(User).filter(func.lower(User.email) == email).first()
+        )
+        if existing_user is not None:
+            membership = db.get(
+                ProjectMember,
+                {"project_id": project.id, "user_id": existing_user.id},
+            )
+            if membership is None:
+                db.add(
+                    ProjectMember(
+                        project_id=project.id,
+                        user_id=existing_user.id,
+                        role=entry.role,
+                    )
+                )
+            # Drop any now-redundant invitation for the same address.
+            stale = db.get(
+                PendingProjectMember,
+                {"project_id": project.id, "email": email},
+            )
+            if stale is not None:
+                db.delete(stale)
+        else:
+            invite = db.get(
+                PendingProjectMember,
+                {"project_id": project.id, "email": email},
+            )
+            if invite is None:
+                db.add(
+                    PendingProjectMember(
+                        project_id=project.id, email=email, role=entry.role
+                    )
+                )
+            else:
+                invite.role = entry.role
+    db.commit()
+    db.refresh(project)
     return _serialize(project, db)
 
 

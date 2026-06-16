@@ -119,3 +119,98 @@ def test_project_out_serializes_pending_members(client, db_session):
     assert resp.json()["pending_members"] == [
         {"email": "bob@municorn.com", "role": "viewer"}
     ]
+
+
+# --- Task 3: POST /{id}/members batch add ---
+
+def test_add_members_requires_auth(client, db_session):
+    owner = _make_user(db_session, "alice@municorn.com", "sub-a")
+    project = _make_project(db_session, owner)
+    resp = client.post(
+        f"/projects/{project.id}/members",
+        json={"members": [{"email": "x@municorn.com", "role": "member"}]},
+    )
+    assert resp.status_code == 401
+
+
+def test_add_members_404_for_non_member(client, db_session):
+    owner = _make_user(db_session, "alice@municorn.com", "sub-a")
+    project = _make_project(db_session, owner)
+    outsider = _make_user(db_session, "bob@municorn.com", "sub-b")
+    resp = client.post(
+        f"/projects/{project.id}/members",
+        headers=_auth(outsider.id),
+        json={"members": [{"email": "x@municorn.com", "role": "member"}]},
+    )
+    assert resp.status_code == 404
+
+
+def test_add_existing_user_becomes_member(client, db_session):
+    owner = _make_user(db_session, "alice@municorn.com", "sub-a")
+    bob = _make_user(db_session, "bob@municorn.com", "sub-b")
+    project = _make_project(db_session, owner)
+    resp = client.post(
+        f"/projects/{project.id}/members",
+        headers=_auth(owner.id),
+        json={"members": [{"email": "BOB@municorn.com", "role": "viewer"}]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    bob_rows = [m for m in body["members"] if m["user_id"] == bob.id]
+    assert bob_rows == [
+        {"user_id": bob.id, "email": "bob@municorn.com", "name": "Bob", "role": "viewer"}
+    ]
+    assert body["pending_members"] == []
+
+
+def test_add_unknown_email_becomes_pending(client, db_session):
+    owner = _make_user(db_session, "alice@municorn.com", "sub-a")
+    project = _make_project(db_session, owner)
+    resp = client.post(
+        f"/projects/{project.id}/members",
+        headers=_auth(owner.id),
+        json={"members": [{"email": "Carol@municorn.com", "role": "member"}]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["pending_members"] == [
+        {"email": "carol@municorn.com", "role": "member"}
+    ]
+    # No new registered member beyond the owner.
+    assert {m["email"] for m in body["members"]} == {"alice@municorn.com"}
+
+
+def test_add_members_is_idempotent_for_existing_member(client, db_session):
+    owner = _make_user(db_session, "alice@municorn.com", "sub-a")
+    bob = _make_user(db_session, "bob@municorn.com", "sub-b")
+    project = _make_project(db_session, owner)
+    payload = {"members": [{"email": "bob@municorn.com", "role": "admin"}]}
+    client.post(f"/projects/{project.id}/members", headers=_auth(owner.id), json=payload)
+    # Re-add with a different role: existing membership is left untouched.
+    resp = client.post(
+        f"/projects/{project.id}/members",
+        headers=_auth(owner.id),
+        json={"members": [{"email": "bob@municorn.com", "role": "viewer"}]},
+    )
+    assert resp.status_code == 200
+    bob_rows = [m for m in resp.json()["members"] if m["user_id"] == bob.id]
+    assert len(bob_rows) == 1
+    assert bob_rows[0]["role"] == "admin"  # unchanged by the second add
+
+
+def test_add_existing_invite_updates_its_role(client, db_session):
+    owner = _make_user(db_session, "alice@municorn.com", "sub-a")
+    project = _make_project(db_session, owner)
+    client.post(
+        f"/projects/{project.id}/members",
+        headers=_auth(owner.id),
+        json={"members": [{"email": "carol@municorn.com", "role": "member"}]},
+    )
+    resp = client.post(
+        f"/projects/{project.id}/members",
+        headers=_auth(owner.id),
+        json={"members": [{"email": "carol@municorn.com", "role": "admin"}]},
+    )
+    assert resp.json()["pending_members"] == [
+        {"email": "carol@municorn.com", "role": "admin"}
+    ]

@@ -134,6 +134,11 @@ export interface CalendarMeeting {
   status: string | null;
 }
 
+export interface PendingMemberOut {
+  email: string;
+  role: ProjectRole;
+}
+
 export interface ProjectOut {
   id: string;
   name: string;
@@ -147,6 +152,7 @@ export interface ProjectOut {
   notion_section_url: string | null;
   notion_page_id: string | null;
   members: ProjectMemberOut[];
+  pending_members: PendingMemberOut[];
   created_at: string;
 }
 
@@ -275,6 +281,30 @@ export const api = {
   listProjectMeetings: (projectId: string) =>
     apiFetch<CalendarMeeting[]>(
       `/projects/${encodeURIComponent(projectId)}/meetings`,
+    ),
+  listMemberSuggestions: (projectId: string) =>
+    apiFetch<MeetingParticipantSuggestion[]>(
+      `/projects/${encodeURIComponent(projectId)}/member-suggestions`,
+    ),
+  addProjectMembers: (
+    projectId: string,
+    members: { email: string; role: ProjectRole }[],
+  ) =>
+    apiFetch<ProjectOut>(`/projects/${encodeURIComponent(projectId)}/members`, {
+      method: "POST",
+      body: JSON.stringify({ members }),
+    }),
+  updateMemberRole: (projectId: string, userId: number, role: ProjectRole) =>
+    apiFetch<ProjectOut>(
+      `/projects/${encodeURIComponent(projectId)}/members/${userId}`,
+      { method: "PATCH", body: JSON.stringify({ role }) },
+    ),
+  updatePendingMemberRole: (projectId: string, email: string, role: ProjectRole) =>
+    apiFetch<ProjectOut>(
+      `/projects/${encodeURIComponent(projectId)}/pending-members/${encodeURIComponent(
+        email,
+      )}`,
+      { method: "PATCH", body: JSON.stringify({ role }) },
     ),
   getAgentSettings: (projectId: string) =>
     apiFetch<AgentSettings>(

@@ -4,8 +4,9 @@
     {
       "name": "web (Next.js)",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "apps/web"],
-      "port": 3000
+      "runtimeArgs": ["run", "dev:preview", "--prefix", "apps/web"],
+      "port": 3000,
+      "autoPort": false
     }
   ]
 }

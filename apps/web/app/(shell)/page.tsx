@@ -5,10 +5,10 @@ import type { JSX } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
 import { useActiveProject } from "@/components/shell/ActiveProjectProvider";
-import { MEETINGS, UPDATES } from "@/lib/mock-data";
+import { UPDATES } from "@/lib/mock-data";
 import { ActivityFeed } from "@/components/screens/home/ActivityFeed";
 import { AskAgentCard } from "@/components/screens/home/AskAgentCard";
-import { MeetingRowCompact } from "@/components/screens/home/MeetingRowCompact";
+import { RecentMeetingsLive } from "@/components/screens/home/RecentMeetingsLive";
 import { StatCard } from "@/components/screens/home/StatCard";
 import { UpdateRowCompact } from "@/components/screens/home/UpdateRowCompact";
 
@@ -54,7 +54,6 @@ export default function HomePage(): JSX.Element {
     };
   }, []);
 
-  const recentMeetings = MEETINGS.slice(0, 3);
   const pendingUpdates = UPDATES.filter((u) => u.status === "pending");
 
   const headerActions = (
@@ -119,15 +118,7 @@ export default function HomePage(): JSX.Element {
                 View all
               </button>
             </div>
-            <div className="meeting-compact-list">
-              {recentMeetings.map((m) => (
-                <MeetingRowCompact
-                  key={m.id}
-                  meeting={m}
-                  onClick={() => router.push(`/meetings/${m.id}`)}
-                />
-              ))}
-            </div>
+            <RecentMeetingsLive />
           </div>
           <div className="card">
             <div className="card-header">
@@ -187,15 +178,7 @@ export default function HomePage(): JSX.Element {
                 View all →
               </button>
             </div>
-            <div className="meeting-compact-list">
-              {recentMeetings.map((m) => (
-                <MeetingRowCompact
-                  key={m.id}
-                  meeting={m}
-                  onClick={() => router.push(`/meetings/${m.id}`)}
-                />
-              ))}
-            </div>
+            <RecentMeetingsLive />
           </div>
 
           <div className="card" style={{ marginTop: 20 }}>

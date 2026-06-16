@@ -57,6 +57,12 @@ body.dark .stat-card.highlight { background: var(--bg-0); color: var(--ink-1); b
 .meeting-compact {
   padding: var(--pad-md) var(--pad-lg);
   display: flex; align-items: center; gap: var(--pad-md);
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
 }
 .meeting-compact:hover { background: var(--bg-1); }

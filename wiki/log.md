@@ -2,13 +2,31 @@
 type: meta
 title: "Wiki Log"
 created: 2026-05-10
-updated: 2026-06-15
+updated: 2026-06-16
 tags: [meta, log]
 ---
 
 # Wiki Log
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
+
+## 2026-06-16 — Live Home Recent meetings (ScrumAgent-0i6)
+
+Home's **Recent meetings** card no longer renders `MEETINGS.slice(0, 3)` from
+`apps/web/lib/mock-data.ts`. New `RecentMeetingsLive` loads `GET /projects` and
+then each project's `GET /projects/{id}/meetings`, merges the returned Google
+Calendar events, sorts by event start descending, and renders the newest three
+with real date/month, attendee count, duration, project name, and Scheduled/Past
+pills. Rows open the Google Calendar `html_link` when available; otherwise they
+fall back to `/meetings`. Empty/error/loading states are local to the card, and
+the existing Home layout variants all reuse the same live component. The widget
+skips the calendar fetch when no decodable bearer JWT exists, preserving the
+unauthenticated shell/tweaks views instead of letting optional calendar loading
+redirect the whole page to `/login`. Added a
+Playwright regression that mocks calendar events and asserts the old `Daily
+Standup` mock row is gone. Verification: RED watched, then `home.spec.ts` green,
+`tsc --noEmit` green, and in-app browser checked against the running local app
+showing real calendar rows with no console errors.
 
 ## 2026-06-15 — Live /settings Members tab (ScrumAgent-l5p)
 

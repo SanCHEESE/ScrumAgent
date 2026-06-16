@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.deps import get_current_user, get_db, get_google_oauth, get_settings
+from app.membership import grant_pending_memberships
 from app.models import User
 from app.oauth import GoogleOAuthClient
 from app.security import create_access_token
@@ -90,6 +91,10 @@ async def google_callback(
         user.name = userinfo.get("name")
     db.commit()
     db.refresh(user)
+
+    # Realize any email invitations addressed to this person (idempotent).
+    grant_pending_memberships(db, user)
+    db.commit()
 
     token = create_access_token(
         str(user.id),

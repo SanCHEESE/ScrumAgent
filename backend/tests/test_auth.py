@@ -59,6 +59,48 @@ def test_callback_upserts_user_idempotently(make_client, municorn_userinfo, db_s
     assert db_session.query(User).count() == 1
 
 
+def test_login_grants_pending_project_memberships(
+    make_client, municorn_userinfo, db_session
+):
+    """A login consumes any invitation addressed to the user's email."""
+    from app.models import (
+        PendingProjectMember,
+        Project,
+        ProjectMember,
+        User,
+    )
+    from app.models.types import ProjectRole
+
+    # A project owned by someone else, with an invitation for alice@municorn.com
+    # (the identity municorn_userinfo logs in as).
+    owner = User(google_sub="sub-owner", email="owner@municorn.com", name="Owner")
+    db_session.add(owner)
+    db_session.commit()
+    db_session.refresh(owner)
+    project = Project(owner_id=owner.id, name="P", agent_email="agent@municorn.com")
+    project.members.append(ProjectMember(user_id=owner.id, role=ProjectRole.admin))
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)  # project.id is assigned at flush
+    db_session.add(
+        PendingProjectMember(
+            project_id=project.id, email="alice@municorn.com", role=ProjectRole.member
+        )
+    )
+    db_session.commit()
+
+    client = make_client(municorn_userinfo)
+    _login(client)
+
+    alice = db_session.query(User).filter_by(email="alice@municorn.com").one()
+    membership = db_session.get(
+        ProjectMember, {"project_id": project.id, "user_id": alice.id}
+    )
+    assert membership is not None
+    assert membership.role is ProjectRole.member
+    assert db_session.query(PendingProjectMember).count() == 0
+
+
 def _start_state(client) -> str:
     start = client.get("/auth/google/start")
     return parse_qs(urlparse(start.headers["location"]).query)["state"][0]

@@ -2,7 +2,7 @@
 type: domain
 title: "Design"
 created: 2026-05-10
-updated: 2026-05-10
+updated: 2026-06-16
 tags: [domain, design, ux]
 ---
 
@@ -13,6 +13,13 @@ Visual and UX language for **Kabanchik**. Source: [[sources/design-brief]], [[so
 ## Posture
 
 Light, polished B2B SaaS. Calm, trustworthy, operational. Clean enterprise UX with a subtle modern edge. Premium, not flashy.
+
+## Brand mark
+
+Kabanchik uses `apps/web/public/kabanchik-boar.svg`: a compact single-colour
+running boar silhouette. The same SVG is rendered in the sidebar logo and is
+registered as the app favicon through Next metadata. Avoid reverting to the
+emoji boar; it was a placeholder from the early prototype.
 
 ## Typography
 

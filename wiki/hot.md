@@ -1,16 +1,16 @@
 ---
 type: meta
 title: "Hot Cache"
-updated: 2026-06-16T12:31:50+04:00
+updated: 2026-06-16T12:37:25+04:00
 tags: [meta, hot-cache]
 ---
 
 # Recent Context
 
 ## Last Updated
-2026-06-16. **Shell and Home live-data polish (`ScrumAgent-fv7`,
-`ScrumAgent-cv3`, `ScrumAgent-iie`, `ScrumAgent-qiw`, `ScrumAgent-ec9`,
-`ScrumAgent-9we`).** The sidebar project
+2026-06-16. **Shell and Home live-data polish (`ScrumAgent-qe6`,
+`ScrumAgent-fv7`, `ScrumAgent-cv3`, `ScrumAgent-iie`, `ScrumAgent-qiw`,
+`ScrumAgent-ec9`, `ScrumAgent-9we`).** The sidebar project
 switcher now loads real projects from `GET /projects`, defaults to the first real
 project, and switches the active project from the real list instead of showing
 the mock Platform Team. The Home page title uses `/auth/me` and browser local
@@ -18,7 +18,8 @@ time; Recent meetings shows scheduled future calendar events; Meetings this week
 counts live calendar rows and compares against the previous week. The shell
 Meetings nav badge now shares that live current-week count instead of rendering a
 stale hardcoded badge. The sidebar footer user row no longer opens a popover;
-the chevron slot is a direct Sign out button.
+the chevron slot is a direct Sign out button. The Kabanchik mark is now a
+custom SVG running-boar silhouette and favicon instead of an emoji placeholder.
 
 ## Key Recent Facts
 - Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker
@@ -30,6 +31,8 @@ the chevron slot is a direct Sign out button.
 - Canonical plan: [[sources/mvp-v2-plan]]. Tracking: `bd`. TDD mandatory.
 
 ## What just shipped (same day, newest first)
+- **SVG brand mark** (`qe6`): sidebar logo and favicon use
+  `apps/web/public/kabanchik-boar.svg`, replacing the placeholder boar emoji.
 - **Sidebar direct logout** (`fv7`): footer user row is no longer a menu trigger;
   the former chevron slot is a direct logout button and logout clears all app
   token keys.

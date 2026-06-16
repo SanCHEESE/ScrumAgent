@@ -77,9 +77,7 @@ export function Sidebar({ onSwitchProject }: SidebarProps) {
         }}
       >
         <div className="logo" aria-label="Kabanchik">
-          <span role="img" aria-label="boar" style={{ fontSize: 20, lineHeight: 1 }}>
-            🐗
-          </span>
+          <img src="/kabanchik-boar.svg" alt="Running boar silhouette" />
         </div>
         <div className="logo-text">Kabanchik</div>
       </div>

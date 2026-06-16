@@ -10,6 +10,21 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-16 — Kabanchik SVG boar logo and favicon (ScrumAgent-qe6)
+
+The sidebar brand mark no longer renders the placeholder `🐗` emoji. Added
+`apps/web/public/kabanchik-boar.svg`, a compact one-colour running boar
+silhouette, and `Sidebar` now renders it as the logo image. `app/layout.tsx`
+also registers the same SVG through `metadata.icons`, so it is the app favicon.
+The shell smoke test now verifies the SVG logo, absence of the emoji, and the
+favicon link.
+
+Verification: watched the focused Home shell test fail because the SVG logo was
+missing, then pass after adding the asset and metadata. `npm --prefix apps/web
+run typecheck` and the full `home.spec.ts` are green. In-app browser on `/`
+reported `/kabanchik-boar.svg` for both the logo `img` and favicon link, with
+empty logo text.
+
 ## 2026-06-16 — Sidebar footer uses direct logout (ScrumAgent-fv7)
 
 The sidebar footer no longer opens a popover/menu when the user row is clicked.

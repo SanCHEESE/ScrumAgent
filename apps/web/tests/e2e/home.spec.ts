@@ -145,6 +145,14 @@ test.describe("Home dashboard", () => {
     // AppShell pieces.
     await expect(page.locator(".live-bar")).toBeVisible();
     await expect(page.locator(".sidebar")).toBeVisible();
+    await expect(
+      page.locator('.logo img[alt="Running boar silhouette"]'),
+    ).toBeVisible();
+    await expect(page.locator(".logo").getByText("🐗")).toHaveCount(0);
+    await expect(page.locator('link[rel~="icon"]')).toHaveAttribute(
+      "href",
+      "/kabanchik-boar.svg",
+    );
   });
 
   test("split layout: 4 stat cards + ask card", async ({ page }) => {

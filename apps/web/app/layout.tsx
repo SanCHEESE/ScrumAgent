@@ -6,6 +6,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Kabanchik · ScrumAgent",
   description: "AI agent that runs your scrum.",
+  icons: {
+    icon: "/kabanchik-boar.svg",
+  },
 };
 
 const FONTS_HREF =

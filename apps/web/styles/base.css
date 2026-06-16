@@ -77,6 +77,7 @@ body.dark .live-bar { background: #000; }
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
+.logo img { width: 26px; height: 26px; display: block; }
 body.dark .logo { background: transparent; }
 .logo-text { font-family: var(--font-display); font-weight: 600; font-size: 17px; letter-spacing: -0.02em; white-space: nowrap; }
 .logo-text em { font-style: normal; font-weight: 600; color: inherit; }

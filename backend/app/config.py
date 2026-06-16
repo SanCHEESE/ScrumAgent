@@ -8,6 +8,7 @@ missing one fails fast at startup instead of surfacing as a confusing 500 later.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -33,6 +34,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-5.4-mini"
     allowed_domain: str = "municorn.com"
     jwt_ttl_hours: int = 24
+    app_environment: Literal["production", "agent_preview"] = "production"
     backend_base_url: str = "http://localhost:8000"
     frontend_base_url: str = "http://localhost:3000"
     database_url: str = "sqlite:////app/data/db/scrumagent.db"

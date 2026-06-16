@@ -10,6 +10,31 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-16 — Split preview and production environments (ScrumAgent-byz)
+
+Added an explicit runtime boundary for Codex/agent preview vs real use.
+Backend `Settings.app_environment` accepts `production` (default) or
+`agent_preview`. Real OAuth JWTs now carry an `env` claim; `get_current_user`
+rejects missing/wrong-environment tokens, still 401s in production without a bearer, and
+only in `agent_preview` resolves a local preview principal without a bearer.
+Project access is still member-only in production, while preview can list/read all
+local projects without reusing a real user's token.
+
+Frontend `NEXT_PUBLIC_APP_ENVIRONMENT` mirrors the backend mode. JWTs moved from
+the old shared `localStorage["kabanchik.token"]` key into
+`kabanchik.production.token` or `kabanchik.agent_preview.token`; storing a new
+token clears foreign/legacy keys. The login page shows an explicit preview entry
+point, while the sidebar resolves `/auth/me` without bearer in preview and shows
+the local fake dev user (`Dev User`, `dev@municorn.com`). `RecentMeetingsLive`
+can fetch in preview without requiring a decodable bearer. Config docs and
+Compose env forwarding were updated; frontend scripts now include `dev:preview`
+and `dev:production`.
+
+Verification: watched RED for backend env-claim/preview-access tests and the
+frontend token namespace regression, then green. Full backend pytest green,
+`npm --prefix apps/web run typecheck` green, and auth-related Playwright suite
+(`login`, `auth`, `home`, `meetings`, `settings`) 34/34 green.
+
 ## 2026-06-16 — Live Home Recent meetings (ScrumAgent-0i6)
 
 Home's **Recent meetings** card no longer renders `MEETINGS.slice(0, 3)` from

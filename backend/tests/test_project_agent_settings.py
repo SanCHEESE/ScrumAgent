@@ -63,7 +63,8 @@ def client(db_session):
 
 
 def _auth(uid: int) -> dict:
-    return {"Authorization": f"Bearer {create_access_token(str(uid), SECRET)}"}
+    token = create_access_token(str(uid), SECRET, extra={"env": "production"})
+    return {"Authorization": f"Bearer {token}"}
 
 
 def _make_user(db, email="alice@municorn.com", sub="sub-alice") -> User:

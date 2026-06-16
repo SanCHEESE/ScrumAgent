@@ -89,6 +89,27 @@ def get_integration_validators() -> IntegrationValidators:
 
 
 _bearer = HTTPBearer(auto_error=False)
+PREVIEW_GOOGLE_SUB = "dev-sub"
+PREVIEW_EMAIL = "dev@municorn.com"
+PREVIEW_NAME = "Dev User"
+
+
+def is_agent_preview(settings: Settings) -> bool:
+    return settings.app_environment == "agent_preview"
+
+
+def _ensure_preview_user(db: Session) -> User:
+    user = db.query(User).filter(User.google_sub == PREVIEW_GOOGLE_SUB).one_or_none()
+    if user is None:
+        user = User(
+            google_sub=PREVIEW_GOOGLE_SUB,
+            email=PREVIEW_EMAIL,
+            name=PREVIEW_NAME,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    return user
 
 
 def get_current_user(
@@ -98,6 +119,8 @@ def get_current_user(
 ) -> User:
     """Resolve the bearer JWT to a ``User`` or raise 401."""
     if credentials is None:
+        if is_agent_preview(settings):
+            return _ensure_preview_user(db)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
     try:
         payload = decode_access_token(credentials.credentials, settings.secret_key)
@@ -105,6 +128,8 @@ def get_current_user(
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED, "Invalid or expired token"
         ) from exc
+    if payload.get("env") != settings.app_environment:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
     sub = payload.get("sub")
     # OAuth ``state`` tokens are signed with the same key — their ``purpose``
     # claim (and a non-numeric/absent ``sub``) must never resolve to a session.

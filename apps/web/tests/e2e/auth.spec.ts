@@ -10,7 +10,7 @@ import { expect, test, type Page } from "@playwright/test";
  */
 
 const API = "http://localhost:8000";
-const TOKEN_KEY = "kabanchik.token";
+const TOKEN_KEY = "kabanchik.production.token";
 
 /** Seed a bearer token into localStorage for the app origin. */
 async function seedToken(page: Page, token = "e2e.token.value"): Promise<void> {

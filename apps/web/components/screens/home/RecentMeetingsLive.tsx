@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { ApiError, api, type CalendarMeeting } from "@/lib/api";
-import { decodeTokenEmail, getToken } from "@/lib/auth";
+import { decodeTokenEmail, getToken, isAgentPreviewEnvironment } from "@/lib/auth";
 
 interface RecentMeeting extends CalendarMeeting {
   projectName: string;
@@ -177,7 +177,10 @@ export function RecentMeetingsLive(): JSX.Element {
     (async () => {
       try {
         const token = getToken();
-        if (!token || !decodeTokenEmail(token)) {
+        if (
+          !isAgentPreviewEnvironment() &&
+          (!token || !decodeTokenEmail(token))
+        ) {
           setState({ ...EMPTY_RECENT_MEETINGS, loading: false });
           return;
         }

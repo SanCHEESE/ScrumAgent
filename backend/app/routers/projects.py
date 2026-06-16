@@ -28,6 +28,7 @@ from app.deps import (
     get_google_calendar,
     get_integration_validators,
     get_settings,
+    is_agent_preview,
 )
 from app.google_calendar import (
     GoogleAuthRevokedError,
@@ -302,14 +303,17 @@ async def create_project(
 def list_projects(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> list[ProjectOut]:
-    projects = (
-        db.query(Project)
-        .join(ProjectMember, ProjectMember.project_id == Project.id)
-        .filter(ProjectMember.user_id == user.id)
-        .order_by(Project.created_at)
-        .all()
-    )
+    query = db.query(Project).order_by(Project.created_at)
+    if is_agent_preview(settings):
+        projects = query.all()
+    else:
+        projects = (
+            query.join(ProjectMember, ProjectMember.project_id == Project.id)
+            .filter(ProjectMember.user_id == user.id)
+            .all()
+        )
     return [_serialize(p, db) for p in projects]
 
 
@@ -340,11 +344,12 @@ async def list_project_meetings(
     days_forward: int = Query(60, ge=0, le=365),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
     calendar: GoogleCalendarClient = Depends(get_google_calendar),
 ) -> list[CalendarMeetingOut]:
     """Live Google Calendar events of the project's agent account (member-only)."""
     project = db.get(Project, project_id)
-    if project is None or not _is_member(db, project_id, user.id):
+    if project is None or not _can_access_project(db, project_id, user, settings):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
     refresh_token = (
         project.credential.google_refresh_token if project.credential else None
@@ -426,9 +431,11 @@ class AgentSettingsModel(BaseModel):
     context_window_meetings: int = Field(10, ge=1, le=100)
 
 
-def _get_member_project(db: Session, project_id: str, user: User) -> Project:
+def _get_member_project(
+    db: Session, project_id: str, user: User, settings: Settings
+) -> Project:
     project = db.get(Project, project_id)
-    if project is None or not _is_member(db, project_id, user.id):
+    if project is None or not _can_access_project(db, project_id, user, settings):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
     return project
 
@@ -438,9 +445,10 @@ def get_agent_settings(
     project_id: str,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> AgentSettingsModel:
     """Per-project agent behavior; defaults when never saved (member-only)."""
-    project = _get_member_project(db, project_id, user)
+    project = _get_member_project(db, project_id, user, settings)
     row = project.agent_settings
     if row is None:
         return AgentSettingsModel()
@@ -453,9 +461,10 @@ def put_agent_settings(
     req: AgentSettingsModel,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> AgentSettingsModel:
     """Upsert the project's agent behavior settings (member-only)."""
-    project = _get_member_project(db, project_id, user)
+    project = _get_member_project(db, project_id, user, settings)
     row = project.agent_settings
     if row is None:
         row = ProjectAgentSettings(project_id=project.id)
@@ -529,6 +538,7 @@ def get_billing(
     project_id: str,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> BillingOut:
     """Aggregate the project's usage events for the current calendar month.
 
@@ -536,7 +546,7 @@ def get_billing(
     small at MVP scale, and it sidesteps SQLite/Postgres timestamp-comparison
     differences.
     """
-    project = _get_member_project(db, project_id, user)
+    project = _get_member_project(db, project_id, user, settings)
     now = datetime.now(timezone.utc)
     cycle_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     days_in_month = monthrange(now.year, now.month)[1]
@@ -689,9 +699,10 @@ def get_integrations(
     project_id: str,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> IntegrationsStatusOut:
     """Real per-project integration state (member-only)."""
-    project = _get_member_project(db, project_id, user)
+    project = _get_member_project(db, project_id, user, settings)
     return _integrations_status(project)
 
 
@@ -701,10 +712,11 @@ async def put_jira_integration(
     req: JiraConfig,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
     validators: IntegrationValidators = Depends(get_integration_validators),
 ) -> IntegrationsStatusOut:
     """Replace the project's Jira credentials — live-validated before saving."""
-    project = _get_member_project(db, project_id, user)
+    project = _get_member_project(db, project_id, user, settings)
     result = await validators.validate_jira(
         site_url=req.site_url, user_email=req.user_email, api_token=req.api_token
     )
@@ -727,10 +739,11 @@ async def put_notion_integration(
     req: NotionConfig,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
     validators: IntegrationValidators = Depends(get_integration_validators),
 ) -> IntegrationsStatusOut:
     """Replace the project's Notion credentials — live-validated before saving."""
-    project = _get_member_project(db, project_id, user)
+    project = _get_member_project(db, project_id, user, settings)
     result = await validators.validate_notion(token=req.token)
     if not result.ok:
         raise HTTPException(
@@ -750,9 +763,10 @@ def put_google_integration(
     req: GoogleReconnectRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> IntegrationsStatusOut:
     """Reconnect the agent's Google account from a staged PendingOAuth grant."""
-    project = _get_member_project(db, project_id, user)
+    project = _get_member_project(db, project_id, user, settings)
     pending = db.get(PendingOAuth, req.google_auth_session_id)
     if (
         pending is None
@@ -777,6 +791,7 @@ async def test_stored_integration(
     provider: str,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
     validators: IntegrationValidators = Depends(get_integration_validators),
     calendar: GoogleCalendarClient = Depends(get_google_calendar),
 ) -> dict:
@@ -785,7 +800,7 @@ async def test_stored_integration(
     409 when that provider was never configured; otherwise always 200 with an
     ``{ok, detail, error}`` verdict.
     """
-    project = _get_member_project(db, project_id, user)
+    project = _get_member_project(db, project_id, user, settings)
     cred = project.credential
 
     if provider == "jira":
@@ -849,11 +864,20 @@ def get_project(
     project_id: str,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> ProjectOut:
     project = db.get(Project, project_id)
-    if project is None or not _is_member(db, project_id, user.id):
+    if project is None or not _can_access_project(db, project_id, user, settings):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
     return _serialize(project, db)
+
+
+def _can_access_project(
+    db: Session, project_id: str, user: User, settings: Settings
+) -> bool:
+    if is_agent_preview(settings):
+        return True
+    return _is_member(db, project_id, user.id)
 
 
 def _is_member(db: Session, project_id: str, user_id: int) -> bool:

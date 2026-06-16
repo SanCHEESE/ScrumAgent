@@ -14,7 +14,8 @@ from app import deps
 from app.config import Settings
 from app.integrations import ValidationResult
 from app.main import app
-from app.models import PendingOAuth, Project, User
+from app.models import PendingOAuth, Project, ProjectMember, User
+from app.models.types import ProjectRole
 from app.security import create_access_token
 
 SECRET = "router-test-secret"
@@ -33,6 +34,20 @@ def _settings() -> Settings:
     )
 
 
+def _preview_settings() -> Settings:
+    return Settings(
+        _env_file=None,
+        secret_key=SECRET,
+        openai_api_key="k",
+        google_client_id="cid",
+        google_client_secret="csec",
+        backend_base_url="http://testserver",
+        frontend_base_url="http://localhost:3000",
+        allowed_domain="municorn.com",
+        app_environment="agent_preview",
+    )
+
+
 def _user(db, email, sub) -> User:
     u = User(google_sub=sub, email=email, name=email.split("@")[0].title())
     db.add(u)
@@ -42,7 +57,8 @@ def _user(db, email, sub) -> User:
 
 
 def _auth(uid: int) -> dict:
-    return {"Authorization": f"Bearer {create_access_token(str(uid), SECRET)}"}
+    token = create_access_token(str(uid), SECRET, extra={"env": "production"})
+    return {"Authorization": f"Bearer {token}"}
 
 
 def _seed_pending(db, user_id, sid="sess-1", email="telecom.scrum.agent@municorn.com"):
@@ -253,3 +269,36 @@ def test_project_detail_hidden_from_non_members(client, db_session):
     ).json()
     assert client.get(f"/projects/{created['id']}", headers=_auth(alice.id)).status_code == 200
     assert client.get(f"/projects/{created['id']}", headers=_auth(bob.id)).status_code == 404
+
+
+def test_agent_preview_lists_and_reads_all_projects_without_bearer(client, db_session):
+    """Codex/agent preview runs with an explicit all-project environment."""
+    app.dependency_overrides[deps.get_settings] = _preview_settings
+    alice = _user(db_session, "alice@municorn.com", "sub-a")
+    bob = _user(db_session, "bob@municorn.com", "sub-b")
+    alice_project = Project(
+        owner_id=alice.id,
+        name="Alice P",
+        agent_email="agent-a@municorn.com",
+        google_connected=True,
+    )
+    alice_project.members.append(
+        ProjectMember(user_id=alice.id, role=ProjectRole.admin)
+    )
+    bob_project = Project(
+        owner_id=bob.id,
+        name="Bob P",
+        agent_email="agent-b@municorn.com",
+        google_connected=True,
+    )
+    bob_project.members.append(ProjectMember(user_id=bob.id, role=ProjectRole.admin))
+    db_session.add_all([alice_project, bob_project])
+    db_session.commit()
+    db_session.refresh(alice_project)
+    db_session.refresh(bob_project)
+
+    listing = client.get("/projects")
+    assert listing.status_code == 200
+    assert [p["name"] for p in listing.json()] == ["Alice P", "Bob P"]
+    assert client.get(f"/projects/{alice_project.id}").status_code == 200
+    assert client.get(f"/projects/{bob_project.id}").status_code == 200

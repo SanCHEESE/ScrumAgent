@@ -12,7 +12,12 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
-import { consumeTokenFromHash, startGoogleLogin } from "@/lib/auth";
+import {
+  consumeTokenFromHash,
+  environmentLabel,
+  isAgentPreviewEnvironment,
+  startGoogleLogin,
+} from "@/lib/auth";
 import "@/styles/screens/login.css";
 
 const APP_VERSION = "v0.1.0";
@@ -27,8 +32,14 @@ const LOGIN_ERRORS: Record<string, string> = {
 
 export default function LoginPage() {
   const router = useRouter();
+  const previewMode = isAgentPreviewEnvironment();
   const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const authButtonLabel = previewMode
+    ? `Open ${environmentLabel()}`
+    : signingIn
+      ? "Signing in…"
+      : "Continue with Google Workspace";
 
   // Returning from the backend OAuth callback with `#token=…`: stash it and
   // enter the app. A failed round-trip lands here with `?error=…` instead.
@@ -49,7 +60,7 @@ export default function LoginPage() {
     if (signingIn) return;
     setSigningIn(true);
     setError(null);
-    // Hand off to the backend, which redirects to Google consent.
+    // Production hands off to the backend; preview enters the app directly.
     startGoogleLogin();
   }
 
@@ -67,15 +78,15 @@ export default function LoginPage() {
           className="login-google-btn"
           onClick={handleSignIn}
           disabled={signingIn}
-          aria-label="Continue with Google Workspace"
+          aria-label={authButtonLabel}
         >
           <Icon name="google" size={18} className="login-google-icon" />
-          <span>
-            {signingIn ? "Signing in…" : "Continue with Google Workspace"}
-          </span>
+          <span>{authButtonLabel}</span>
         </Button>
 
-        <p className="login-domain-note">Only @municorn.com accounts</p>
+        <p className="login-domain-note">
+          {previewMode ? "All local projects visible" : "Only @municorn.com accounts"}
+        </p>
 
         {error && (
           <p className="login-error" role="alert">

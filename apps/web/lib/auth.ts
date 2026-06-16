@@ -9,7 +9,35 @@
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
-const TOKEN_KEY = "kabanchik.token";
+export type AppEnvironment = "production" | "agent_preview";
+
+const rawEnvironment = process.env.NEXT_PUBLIC_APP_ENVIRONMENT;
+
+export const APP_ENVIRONMENT: AppEnvironment =
+  rawEnvironment === "agent_preview" ? "agent_preview" : "production";
+
+export const TOKEN_KEY = `kabanchik.${APP_ENVIRONMENT}.token`;
+
+const LEGACY_TOKEN_KEY = "kabanchik.token";
+const ALL_ENVIRONMENT_TOKEN_KEYS = [
+  "kabanchik.production.token",
+  "kabanchik.agent_preview.token",
+  LEGACY_TOKEN_KEY,
+] as const;
+
+export function isAgentPreviewEnvironment(): boolean {
+  return APP_ENVIRONMENT === "agent_preview";
+}
+
+export function environmentLabel(): string {
+  return isAgentPreviewEnvironment() ? "Agent preview" : "Production";
+}
+
+function clearForeignTokens(): void {
+  for (const key of ALL_ENVIRONMENT_TOKEN_KEYS) {
+    if (key !== TOKEN_KEY) window.localStorage.removeItem(key);
+  }
+}
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -17,15 +45,21 @@ export function getToken(): string | null {
 }
 
 export function setToken(token: string): void {
+  clearForeignTokens();
   window.localStorage.setItem(TOKEN_KEY, token);
 }
 
 export function clearToken(): void {
   window.localStorage.removeItem(TOKEN_KEY);
+  window.localStorage.removeItem(LEGACY_TOKEN_KEY);
 }
 
 /** Kick off the OAuth flow by handing the browser to the backend. */
 export function startGoogleLogin(): void {
+  if (isAgentPreviewEnvironment()) {
+    window.location.href = "/";
+    return;
+  }
   window.location.href = `${API_BASE}/auth/google/start`;
 }
 

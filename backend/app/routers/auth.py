@@ -95,7 +95,7 @@ async def google_callback(
         str(user.id),
         settings.secret_key,
         ttl_hours=settings.jwt_ttl_hours,
-        extra={"email": user.email},
+        extra={"email": user.email, "env": settings.app_environment},
     )
     resp = RedirectResponse(
         f"{settings.frontend_base_url}/login#token={token}",

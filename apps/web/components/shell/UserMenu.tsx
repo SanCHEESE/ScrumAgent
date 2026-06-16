@@ -5,7 +5,12 @@ import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
 import { ApiError, api, type MeResponse } from "@/lib/api";
-import { decodeTokenEmail, getToken, logout } from "@/lib/auth";
+import {
+  decodeTokenEmail,
+  getToken,
+  isAgentPreviewEnvironment,
+  logout,
+} from "@/lib/auth";
 import type { Participant } from "@/lib/types";
 
 // Deterministic avatar colour per user, drawn from the same palette the mock
@@ -69,12 +74,13 @@ export function UserMenu(): JSX.Element {
 
   useEffect(() => {
     const token = getToken();
-    if (!token) {
+    const previewMode = isAgentPreviewEnvironment();
+    if (!token && !previewMode) {
       setHasToken(false);
       return;
     }
     setHasToken(true);
-    setTokenEmail(decodeTokenEmail(token));
+    setTokenEmail(token ? decodeTokenEmail(token) : null);
 
     let active = true;
     api

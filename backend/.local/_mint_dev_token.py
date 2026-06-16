@@ -26,6 +26,12 @@ dev = ensure("dev@municorn.com", "dev-sub", "Dev User")
 ensure("bob@municorn.com", "bob-sub", "Bob Builder")
 ensure("carol@municorn.com", "carol-sub", "Carol Diaz")
 
-token = create_access_token(str(dev.id), s.secret_key, ttl_hours=24, extra={"email": dev.email})
+token = create_access_token(
+    str(dev.id),
+    s.secret_key,
+    ttl_hours=24,
+    extra={"email": dev.email, "env": s.app_environment},
+)
 print("USERID", dev.id)
+print("ENV", s.app_environment)
 print("TOKEN", token)

@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:preview": "NEXT_PUBLIC_APP_ENVIRONMENT=agent_preview next dev",
+    "dev:production": "NEXT_PUBLIC_APP_ENVIRONMENT=production next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

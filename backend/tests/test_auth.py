@@ -7,6 +7,9 @@ from __future__ import annotations
 
 from urllib.parse import parse_qs, urlparse
 
+from app import deps
+from app.config import Settings
+from app.models import User
 from app.security import create_access_token, decode_access_token
 
 
@@ -43,6 +46,7 @@ def test_callback_allowed_domain_issues_jwt(make_client, municorn_userinfo):
     token = _login(client)
     payload = decode_access_token(token, "router-test-secret")
     assert payload["email"] == "alice@municorn.com"
+    assert payload["env"] == "production"
     assert payload["sub"]  # user id present
 
 
@@ -177,6 +181,64 @@ def test_me_rejects_oauth_state_token_as_bearer(make_client, municorn_userinfo):
 def test_me_rejects_non_numeric_sub(make_client, municorn_userinfo):
     """A malformed ``sub`` must yield 401, not a ValueError 500."""
     client = make_client(municorn_userinfo)
-    weird = create_access_token("not-a-number", "router-test-secret")
+    weird = create_access_token(
+        "not-a-number", "router-test-secret", extra={"env": "production"}
+    )
     resp = client.get("/auth/me", headers={"Authorization": f"Bearer {weird}"})
     assert resp.status_code == 401
+
+
+def test_me_rejects_token_without_environment_claim(make_client, municorn_userinfo):
+    """Legacy/shared JWTs must not cross the production/preview boundary."""
+    client = make_client(municorn_userinfo)
+    legacy = create_access_token(
+        "1", "router-test-secret", extra={"email": "legacy@municorn.com"}
+    )
+    resp = client.get("/auth/me", headers={"Authorization": f"Bearer {legacy}"})
+    assert resp.status_code == 401
+
+
+def test_me_rejects_preview_token_in_production(make_client, municorn_userinfo):
+    """A preview JWT must not authenticate against the real-use environment."""
+    client = make_client(municorn_userinfo)
+    preview = create_access_token(
+        "1",
+        "router-test-secret",
+        extra={"env": "agent_preview", "email": "preview@municorn.com"},
+    )
+    resp = client.get("/auth/me", headers={"Authorization": f"Bearer {preview}"})
+    assert resp.status_code == 401
+
+
+def test_preview_me_uses_local_dev_user_without_bearer(
+    make_client, municorn_userinfo, db_session
+):
+    client = make_client(municorn_userinfo)
+    app_environment = "agent_preview"
+    app_settings = Settings(
+        _env_file=None,
+        secret_key="router-test-secret",
+        openai_api_key="k",
+        google_client_id="test-client-id",
+        google_client_secret="test-client-secret",
+        backend_base_url="http://testserver",
+        frontend_base_url="http://localhost:3000",
+        allowed_domain="municorn.com",
+        app_environment=app_environment,
+    )
+    from app.main import app
+
+    app.dependency_overrides[deps.get_settings] = lambda: app_settings
+    try:
+        resp = client.get("/auth/me")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["email"] == "dev@municorn.com"
+        assert body["name"] == "Dev User"
+        assert body == {
+            "id": db_session.query(User).filter_by(google_sub="dev-sub").one().id,
+            "email": "dev@municorn.com",
+            "name": "Dev User",
+        }
+    finally:
+        app.dependency_overrides.pop(deps.get_settings, None)

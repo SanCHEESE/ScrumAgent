@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { clearStorage } from "./_setup";
 
+const LEGACY_TOKEN_KEY = "kabanchik.token";
+const PRODUCTION_TOKEN_KEY = "kabanchik.production.token";
+
 test.beforeEach(async ({ page }) => {
   await clearStorage(page);
 });
@@ -52,6 +55,22 @@ test.describe("Login screen", () => {
       "Only @municorn.com accounts",
     );
     await expect(page).toHaveURL(/\/login$/);
+  });
+
+  test("stores callback tokens in the production environment namespace", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.goto("/login#token=jwt.from.callback");
+    await expect
+      .poll(() => page.evaluate((key) => window.localStorage.getItem(key), PRODUCTION_TOKEN_KEY))
+      .toBe("jwt.from.callback");
+    const tokens = await page.evaluate((legacyKey) => ({
+      legacy: window.localStorage.getItem(legacyKey),
+    }), LEGACY_TOKEN_KEY);
+    expect(tokens).toEqual({
+      legacy: null,
+    });
   });
 
   test("does not render the AppShell (no live bar)", async ({ page }) => {

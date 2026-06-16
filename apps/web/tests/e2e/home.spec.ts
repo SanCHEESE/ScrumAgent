@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { clearStorage } from "./_setup";
 
 const API = "http://localhost:8000";
-const TOKEN_KEY = "kabanchik.token";
+const TOKEN_KEY = "kabanchik.production.token";
 const E2E_TOKEN =
   "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWFpbCI6ImFsaWNlQG11bmljb3JuLmNvbSJ9.sig";
 

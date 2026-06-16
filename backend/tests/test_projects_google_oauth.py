@@ -93,7 +93,8 @@ def _make_user(db, email="alice@municorn.com", sub="sub-alice") -> User:
 
 
 def _auth(uid: int) -> dict:
-    return {"Authorization": f"Bearer {create_access_token(str(uid), SECRET)}"}
+    token = create_access_token(str(uid), SECRET, extra={"env": "production"})
+    return {"Authorization": f"Bearer {token}"}
 
 
 def _state_from(authorize_url: str) -> str:

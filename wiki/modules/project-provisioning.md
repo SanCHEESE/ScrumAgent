@@ -4,7 +4,7 @@ title: "Project Provisioning"
 path: backend/app/routers/projects.py
 status: active
 created: 2026-06-02
-updated: 2026-06-12
+updated: 2026-06-16
 tags: [module, backend, projects, oauth, integrations, billing]
 ---
 
@@ -84,7 +84,7 @@ integrations are otherwise skippable. The Notion section link is parsed to a pag
 | `POST /projects/{id}/integrations/{provider}/test` | probe the **stored** creds (`google`/`jira`/`notion`); `409` if unconfigured |
 | `GET /projects/{id}/billing` | current-cycle usage aggregation from `llm_usage` (member-only) |
 
-All are protected by `get_current_user` except the callback (identity rides in the signed `state`).
+All are protected by `get_current_user` except the callback (identity rides in the signed `state`). In `APP_ENVIRONMENT=production`, project reads/writes stay member-only. In `APP_ENVIRONMENT=agent_preview`, `get_current_user` supplies the local fake dev user (`dev@municorn.com` / `dev-sub`) when no bearer is present and the project access helper allows all projects, so Codex/agent preview sessions can inspect the whole local dataset without borrowing a real user's token. Do not run `agent_preview` in shared or real deployments.
 
 ## Settings → Integrations (post-provisioning, ScrumAgent-d9q, 2026-06-12)
 

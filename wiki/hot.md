@@ -1,24 +1,24 @@
 ---
 type: meta
 title: "Hot Cache"
-updated: 2026-06-16T09:11:15+04:00
+updated: 2026-06-16T13:05:00+04:00
 tags: [meta, hot-cache]
 ---
 
 # Recent Context
 
 ## Last Updated
-2026-06-16. **Live Home Recent meetings (`ScrumAgent-0i6`).** Home's Recent
-meetings card now reads real Google Calendar data instead of
-`MEETINGS.slice(0, 3)`. New `RecentMeetingsLive` fetches `GET /projects`, then
-each project's `GET /projects/{id}/meetings`, merges the results, sorts by event
-start descending, and shows the newest three calendar events. Rows render real
-date/month, attendee count, duration, project name, Scheduled/Past status, and
-open the Google Calendar `html_link` when available. The widget skips fetching
-when no decodable bearer JWT exists, so optional calendar loading does not
-redirect unauthenticated shell/tweaks views. Loading/empty/error states stay
-inside the card. The old mock `Daily Standup` row is covered by a Playwright
-regression.
+2026-06-16. **Preview vs production environments (`ScrumAgent-byz`).** Runtime
+access is now explicitly split with `APP_ENVIRONMENT` / `NEXT_PUBLIC_APP_ENVIRONMENT`.
+Default `production` is real-use mode: protected backend routes require bearer
+JWTs, project access stays member-only, and frontend sessions use
+`localStorage["kabanchik.production.token"]`. `agent_preview` is only for local
+Codex/agent previews: the backend can resolve a local preview principal without a
+bearer and project endpoints can inspect all projects; the frontend uses
+`kabanchik.agent_preview.token`, clears legacy/foreign token keys on login, and
+shows the local fake dev user (`Dev User`, `dev@municorn.com`) via `/auth/me`
+without bearer. Real OAuth JWTs now carry an `env` claim and missing/wrong-
+environment tokens 401, so preview and real sessions do not mix.
 
 ## Key Recent Facts
 - Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker
@@ -30,6 +30,8 @@ regression.
 - Canonical plan: [[sources/mvp-v2-plan]]. Tracking: `bd`. TDD mandatory.
 
 ## What just shipped (same day, newest first)
+- **Environment split** (`byz`): production vs agent preview mode, env-scoped JWT
+  and token storage, preview all-project access without real bearer reuse.
 - **Home Recent meetings** (`0i6`): live calendar events on Home via the same
   project meetings endpoint as `/meetings`; focused e2e added, tsc clean,
   browser-verified against real local calendar rows.
@@ -41,16 +43,17 @@ regression.
   configure/test endpoints, and Google reconnect via staged `PendingOAuth`.
 - **Per-project agent settings** (`7qy`): `project_agent_settings` + GET/PUT;
   picker + debounced autosave.
-- **Live meetings** (`m5x`): `GET /projects/{id}/meetings`; revoked grant →
-  409 + `google_connected=false`.
 
 ## Local dev environment
 - Backend = local uvicorn (`backend/.venv`, port 8000, **no --reload** —
   restart manually after backend changes), `DATABASE_URL=sqlite:////.../backend/.local/dev.db`,
   frontend dev on `:3000`. Mint dev JWT:
-  `DATABASE_URL=... PYTHONPATH=. .venv/bin/python .local/_mint_dev_token.py`.
-  Seed billing demo data: `.local/_seed_billing.py` (idempotent, wipes `seed-%`
-  rows).
+  `DATABASE_URL=... PYTHONPATH=. .venv/bin/python .local/_mint_dev_token.py`
+  (prints the token environment). Seed billing demo data:
+  `.local/_seed_billing.py` (idempotent, wipes `seed-%` rows).
+- Frontend commands: `npm --prefix apps/web run dev:production` for real auth,
+  `npm --prefix apps/web run dev:preview` for Codex/agent preview. For full-stack
+  Compose preview, set `APP_ENVIRONMENT=agent_preview` locally only.
 - Docker daemon = Docker Desktop (see bd memory `local-docker-daemon-colima`).
 
 ## Open threads

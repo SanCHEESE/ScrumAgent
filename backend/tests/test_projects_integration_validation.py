@@ -46,7 +46,8 @@ def _make_user(db) -> User:
 
 
 def _auth(uid: int) -> dict:
-    return {"Authorization": f"Bearer {create_access_token(str(uid), SECRET)}"}
+    token = create_access_token(str(uid), SECRET, extra={"env": "production"})
+    return {"Authorization": f"Bearer {token}"}
 
 
 class FakeValidators:

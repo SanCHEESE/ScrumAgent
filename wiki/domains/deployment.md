@@ -2,7 +2,7 @@
 type: domain
 title: "Deployment"
 created: 2026-05-10
-updated: 2026-06-01
+updated: 2026-06-16
 tags: [domain, deployment, docker, gcp]
 ---
 
@@ -28,6 +28,26 @@ docker compose up --build
 
 - Backend: `http://localhost:8000`
 - Frontend: `http://localhost:3000`
+
+### Runtime environments
+
+`APP_ENVIRONMENT` and `NEXT_PUBLIC_APP_ENVIRONMENT` are the hard boundary between
+real use and agent preview:
+
+- `production` (default): real-use mode. Backend protected routes require a valid
+  bearer JWT, project access is member-only, and frontend tokens live under
+  `kabanchik.production.token`.
+- `agent_preview`: Codex/agent-system preview mode. Backend can resolve a local
+  preview principal without a bearer and project endpoints can inspect all
+  projects. The preview principal is the local fake dev user
+  (`dev@municorn.com` / `dev-sub`), so the UI shows real local DB data as that
+  user. Frontend tokens live under `kabanchik.agent_preview.token` if a preview
+  token is ever stored; unauthenticated preview still works.
+
+For frontend-only local work, use `npm --prefix apps/web run dev:production` or
+`npm --prefix apps/web run dev:preview`. For the Compose stack, set
+`APP_ENVIRONMENT=agent_preview` in the local `.env` only for local preview; never
+ship that value to GCP/shared real usage.
 
 ### Local requirements
 
@@ -159,6 +179,8 @@ OPENAI_MODEL=gpt-4.1-mini
 
 # Auth / backend
 SECRET_KEY=change-me-in-production
+APP_ENVIRONMENT=production
+NEXT_PUBLIC_APP_ENVIRONMENT=production
 BACKEND_URL=http://localhost:8000
 FRONTEND_URL=http://localhost:3000
 

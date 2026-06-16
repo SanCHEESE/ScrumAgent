@@ -64,6 +64,9 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     members: Mapped[list["ProjectMember"]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
+    pending_members: Mapped[list["PendingProjectMember"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
     credential: Mapped["ProjectCredential | None"] = relationship(
         back_populates="project", uselist=False, cascade="all, delete-orphan"
     )
@@ -86,6 +89,29 @@ class ProjectMember(TimestampMixin, Base):
     )
 
     project: Mapped["Project"] = relationship(back_populates="members")
+
+
+class PendingProjectMember(TimestampMixin, Base):
+    """Email invitation to a project, realized as a ProjectMember on the
+    invitee's first Google login (see ``app.membership.grant_pending_memberships``).
+
+    Keyed by ``(project_id, email)`` so a person can't be invited to the same
+    project twice; ``email`` is stored lower-cased by the callers that write it.
+    """
+
+    __tablename__ = "pending_project_members"
+
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id"), primary_key=True
+    )
+    email: Mapped[str] = mapped_column(String(320), primary_key=True)
+    role: Mapped[ProjectRole] = mapped_column(
+        SAEnum(ProjectRole, native_enum=False),
+        default=ProjectRole.member,
+        nullable=False,
+    )
+
+    project: Mapped["Project"] = relationship(back_populates="pending_members")
 
 
 class ProjectCredential(TimestampMixin, Base):

@@ -8,6 +8,7 @@ from app.models.integration import Integration
 from app.models.usage import LlmUsage
 from app.models.project import (
     PendingOAuth,
+    PendingProjectMember,
     Project,
     ProjectAgentSettings,
     ProjectCredential,
@@ -28,6 +29,7 @@ __all__ = [
     "Project",
     "ProjectAgentSettings",
     "ProjectMember",
+    "PendingProjectMember",
     "ProjectCredential",
     "PendingOAuth",
 ]

@@ -1044,6 +1044,49 @@ def add_project_members(
     return _serialize(project, db)
 
 
+class RoleUpdateIn(BaseModel):
+    role: ProjectRole
+
+
+@router.patch("/{project_id}/members/{user_id}", response_model=ProjectOut)
+def update_member_role(
+    user_id: int,
+    req: RoleUpdateIn,
+    project: Project = Depends(require_project_access),
+    db: Session = Depends(get_db),
+) -> ProjectOut:
+    """Change a registered member's role (member-only)."""
+    membership = db.get(
+        ProjectMember, {"project_id": project.id, "user_id": user_id}
+    )
+    if membership is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Member not found")
+    membership.role = req.role
+    db.commit()
+    db.refresh(project)
+    return _serialize(project, db)
+
+
+@router.patch("/{project_id}/pending-members/{email}", response_model=ProjectOut)
+def update_pending_member_role(
+    email: str,
+    req: RoleUpdateIn,
+    project: Project = Depends(require_project_access),
+    db: Session = Depends(get_db),
+) -> ProjectOut:
+    """Change a pending invitation's role (member-only)."""
+    key = email.strip().lower()
+    invite = db.get(
+        PendingProjectMember, {"project_id": project.id, "email": key}
+    )
+    if invite is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invitation not found")
+    invite.role = req.role
+    db.commit()
+    db.refresh(project)
+    return _serialize(project, db)
+
+
 def _serialize(project: Project, db: Session) -> ProjectOut:
     members = []
     for member in project.members:

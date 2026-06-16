@@ -214,3 +214,65 @@ def test_add_existing_invite_updates_its_role(client, db_session):
     assert resp.json()["pending_members"] == [
         {"email": "carol@municorn.com", "role": "admin"}
     ]
+
+
+# --- Task 4: PATCH role (member & pending) ---
+
+def test_patch_member_role(client, db_session):
+    owner = _make_user(db_session, "alice@municorn.com", "sub-a")
+    bob = _make_user(db_session, "bob@municorn.com", "sub-b")
+    project = _make_project(db_session, owner)
+    db_session.add(
+        ProjectMember(project_id=project.id, user_id=bob.id, role=ProjectRole.member)
+    )
+    db_session.commit()
+    resp = client.patch(
+        f"/projects/{project.id}/members/{bob.id}",
+        headers=_auth(owner.id),
+        json={"role": "admin"},
+    )
+    assert resp.status_code == 200
+    bob_rows = [m for m in resp.json()["members"] if m["user_id"] == bob.id]
+    assert bob_rows[0]["role"] == "admin"
+
+
+def test_patch_member_role_404_when_not_a_member(client, db_session):
+    owner = _make_user(db_session, "alice@municorn.com", "sub-a")
+    project = _make_project(db_session, owner)
+    resp = client.patch(
+        f"/projects/{project.id}/members/999999",
+        headers=_auth(owner.id),
+        json={"role": "admin"},
+    )
+    assert resp.status_code == 404
+
+
+def test_patch_pending_member_role(client, db_session):
+    owner = _make_user(db_session, "alice@municorn.com", "sub-a")
+    project = _make_project(db_session, owner)
+    db_session.add(
+        PendingProjectMember(
+            project_id=project.id, email="carol@municorn.com", role=ProjectRole.member
+        )
+    )
+    db_session.commit()
+    resp = client.patch(
+        f"/projects/{project.id}/pending-members/carol@municorn.com",
+        headers=_auth(owner.id),
+        json={"role": "viewer"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["pending_members"] == [
+        {"email": "carol@municorn.com", "role": "viewer"}
+    ]
+
+
+def test_patch_pending_member_role_404_when_no_invite(client, db_session):
+    owner = _make_user(db_session, "alice@municorn.com", "sub-a")
+    project = _make_project(db_session, owner)
+    resp = client.patch(
+        f"/projects/{project.id}/pending-members/nobody@municorn.com",
+        headers=_auth(owner.id),
+        json={"role": "viewer"},
+    )
+    assert resp.status_code == 404

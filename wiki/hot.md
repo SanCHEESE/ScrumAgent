@@ -1,22 +1,24 @@
 ---
 type: meta
 title: "Hot Cache"
-updated: 2026-06-16T12:22:59+04:00
+updated: 2026-06-16T12:31:50+04:00
 tags: [meta, hot-cache]
 ---
 
 # Recent Context
 
 ## Last Updated
-2026-06-16. **Shell and Home live-data polish (`ScrumAgent-cv3`,
-`ScrumAgent-iie`, `ScrumAgent-qiw`, `ScrumAgent-ec9`, `ScrumAgent-9we`).** The sidebar project
+2026-06-16. **Shell and Home live-data polish (`ScrumAgent-fv7`,
+`ScrumAgent-cv3`, `ScrumAgent-iie`, `ScrumAgent-qiw`, `ScrumAgent-ec9`,
+`ScrumAgent-9we`).** The sidebar project
 switcher now loads real projects from `GET /projects`, defaults to the first real
 project, and switches the active project from the real list instead of showing
 the mock Platform Team. The Home page title uses `/auth/me` and browser local
 time; Recent meetings shows scheduled future calendar events; Meetings this week
 counts live calendar rows and compares against the previous week. The shell
 Meetings nav badge now shares that live current-week count instead of rendering a
-stale hardcoded badge.
+stale hardcoded badge. The sidebar footer user row no longer opens a popover;
+the chevron slot is a direct Sign out button.
 
 ## Key Recent Facts
 - Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker
@@ -28,6 +30,9 @@ stale hardcoded badge.
 - Canonical plan: [[sources/mvp-v2-plan]]. Tracking: `bd`. TDD mandatory.
 
 ## What just shipped (same day, newest first)
+- **Sidebar direct logout** (`fv7`): footer user row is no longer a menu trigger;
+  the former chevron slot is a direct logout button and logout clears all app
+  token keys.
 - **Meetings nav badge** (`cv3`): sidebar removes the hardcoded `2` and derives
   the badge from live project calendar rows using the same current-week count as
   Home's Meetings stat.

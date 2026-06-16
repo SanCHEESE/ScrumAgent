@@ -10,6 +10,25 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-16 — Sidebar footer uses direct logout (ScrumAgent-fv7)
+
+The sidebar footer no longer opens a popover/menu when the user row is clicked.
+`components/shell/UserMenu.tsx` now renders the authenticated user row as a
+non-menu `div.user-chip`, and the former chevron position is a direct icon
+button with `aria-label="Sign out"` / `title="Logout"`. The old upward
+`role="menu"` popover and menuitem styles were removed. Explicit logout now
+clears every app token key (`kabanchik.production.token`,
+`kabanchik.agent_preview.token`, and legacy `kabanchik.token`) so switching
+between preview and production dev servers cannot leave a stale session token.
+
+Verification: watched the focused auth e2e fail because direct Sign out was
+missing, then pass after the component/CSS/auth change. `npm --prefix apps/web
+run typecheck` and `home.spec.ts` are green. Full `auth.spec.ts` was not a clean
+signal against the currently reused `agent_preview` dev server: its production
+unauthenticated Sign in case expects no preview principal. In-app browser on `/`
+showed `Dev User`, direct `Sign out`, and zero menu/popover elements before and
+after clicking the user row.
+
 ## 2026-06-16 — Meetings sidebar badge uses live weekly count (ScrumAgent-cv3)
 
 The shell **Meetings** nav badge no longer comes from `NAV`'s hardcoded

@@ -50,8 +50,9 @@ export function setToken(token: string): void {
 }
 
 export function clearToken(): void {
-  window.localStorage.removeItem(TOKEN_KEY);
-  window.localStorage.removeItem(LEGACY_TOKEN_KEY);
+  for (const key of ALL_ENVIRONMENT_TOKEN_KEYS) {
+    window.localStorage.removeItem(key);
+  }
 }
 
 /** Kick off the OAuth flow by handing the browser to the backend. */

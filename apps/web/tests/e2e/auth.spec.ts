@@ -3,8 +3,8 @@ import { expect, test, type Page } from "@playwright/test";
 /**
  * Auth identity + session-expiry behaviour (ScrumAgent-9pf).
  *
- * The sidebar footer chip reflects the *real* signed-in user (name + avatar)
- * and offers Sign out; when unauthenticated it offers Sign in. Any 401 from
+ * The sidebar footer reflects the *real* signed-in user (name + avatar)
+ * and offers direct Sign out; when unauthenticated it offers Sign in. Any 401 from
  * the backend (e.g. an expired JWT left in localStorage from an earlier login)
  * clears the token and bounces to /login instead of surfacing a dead error.
  */
@@ -37,7 +37,7 @@ test.describe("Authenticated identity", () => {
     await expect(footer.getByText("Alice Kim")).toHaveCount(0);
   });
 
-  test("Sign out clears the token and returns to /login", async ({
+  test("direct Sign out clears the token and returns to /login", async ({
     page,
     context,
   }) => {
@@ -47,8 +47,13 @@ test.describe("Authenticated identity", () => {
     await seedToken(page);
     await page.goto("/");
 
+    const footer = page.locator(".sidebar-footer");
+    await expect(footer.getByRole("button", { name: "Sign out" })).toBeVisible();
+    await expect(footer.getByRole("menu")).toHaveCount(0);
+
     await page.locator(".sidebar-footer .user-chip").click();
-    await page.getByRole("menuitem", { name: "Sign out" }).click();
+    await expect(footer.getByRole("menu")).toHaveCount(0);
+    await footer.getByRole("button", { name: "Sign out" }).click();
 
     await expect(page).toHaveURL(/\/login$/);
     const token = await page.evaluate(

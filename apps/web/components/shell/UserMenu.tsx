@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type JSX } from "react";
+import { useEffect, useState, type JSX } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
@@ -58,10 +58,10 @@ function toParticipant(email: string, name: string | null): Participant {
 /**
  * Sidebar-footer account control (ScrumAgent-9pf).
  *
- * Authenticated: shows the real user (name + initials avatar) with a Sign out
- * menu. The JWT's `email` claim labels the chip instantly; `/auth/me` then
- * refines it to the full name. Unauthenticated: a Sign in affordance routing to
- * the login screen. A 401 from `/auth/me` is handled by the API client, which
+ * Authenticated: shows the real user (name + initials avatar) with a direct
+ * Sign out button. The JWT's `email` claim labels the chip instantly; `/auth/me`
+ * then refines it to the full name. Unauthenticated: a Sign in affordance routing
+ * to the login screen. A 401 from `/auth/me` is handled by the API client, which
  * clears the token and redirects — so an expired session lands on /login.
  */
 export function UserMenu(): JSX.Element {
@@ -69,8 +69,6 @@ export function UserMenu(): JSX.Element {
   const [hasToken, setHasToken] = useState(false);
   const [tokenEmail, setTokenEmail] = useState<string | null>(null);
   const [user, setUser] = useState<MeResponse | null>(null);
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const token = getToken();
@@ -100,22 +98,6 @@ export function UserMenu(): JSX.Element {
     };
   }, []);
 
-  useEffect(() => {
-    if (!open) return undefined;
-    const onPointer = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
   if (!hasToken) {
     return (
       <button
@@ -136,35 +118,20 @@ export function UserMenu(): JSX.Element {
   const showEmail = email && email !== participant.name;
 
   return (
-    <div className="user-menu" ref={ref}>
-      {open && (
-        <div className="user-menu-pop" role="menu">
-          <div className="user-menu-id">
-            <div className="user-menu-name">{participant.name}</div>
-            {showEmail && <div className="user-menu-email">{email}</div>}
-          </div>
-          <button
-            type="button"
-            className="user-menu-item"
-            role="menuitem"
-            onClick={() => logout()}
-          >
-            <Icon name="arrow_right" size={15} />
-            <span>Sign out</span>
-          </button>
-        </div>
-      )}
-      <button
-        type="button"
-        className="user-chip"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-      >
+    <div className="user-menu">
+      <div className="user-chip" title={showEmail ? email : participant.name}>
         <Avatar participant={participant} />
         <div className="user-name">{participant.name}</div>
-        <Icon name="chevron_down" size={14} />
-      </button>
+        <button
+          type="button"
+          className="user-logout-btn"
+          aria-label="Sign out"
+          title="Logout"
+          onClick={() => logout()}
+        >
+          <Icon name="arrow_right" size={14} />
+        </button>
+      </div>
     </div>
   );
 }

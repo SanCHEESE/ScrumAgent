@@ -1,28 +1,31 @@
 ---
 type: meta
 title: "Hot Cache"
-updated: 2026-06-16T16:00:00+04:00
+updated: 2026-06-16T18:30:00+04:00
 tags: [meta, hot-cache]
 ---
 
 # Recent Context
 
 ## Last Updated
-2026-06-16. **DRY/altitude refactors from the code review (`ScrumAgent-iar`,
-`-1yf`, `-7xk`, `-44x`, `-zis`).** The five cleanup findings the prior review filed
-are now done — all behaviour-preserving. **Backend (`-1yf`)**: per-project access is
-one FastAPI dependency, `require_project_access`, and the `agent_preview` see-all
-bypass is one `can_access_all_projects` consulted by **both** that gate and
-`list_projects` (no per-route `settings` plumbing, no duplicate bypass). **Frontend**:
-a single `ProjectMeetingsProvider` (in `AppShell`) fans out each project's calendar
-**once** for the Home stat/recent cards, the sidebar badge, and `/meetings` (`-iar`,
-project set from `ActiveProjectProvider`, which now carries `color`);
-`lib/calendar-date.ts` is the one all-day date parser (`-7xk`); `lib/avatar.ts` is the
-one initials/colour/palette helper for `UserMenu`/`MembersSection`/`CalendarMeetingRow`
-(`-44x`); `lib/use-current-user.ts` (`useCurrentUser`) is the one signed-in identity
-resolver — after `-iar` removed the meetings consumers' token-gating, only the Home
-greeting and `UserMenu` still need it (`-zis`). Gates green: backend `pytest` (148),
-`tsc`, e2e (68 pass; the only reds are the known login/auth-vs-`dev:preview` env specs).
+2026-06-16. **Suggested members + batch-add + editable roles in Settings → Members
+(`ScrumAgent-idt`).** `/settings → Members` is now read-**write**, full-stack. A
+**Suggested members** section lists the project agent's meeting participants (live
+Google Calendar, via the existing `_participant_suggestions`, minus the agent/current
+members/existing invites); you multi-select and **Add selected (N)** as a batch
+(default role `member`), then edit roles in **Team members** (inline viewer/member/admin
+`<select>`s). People with **no account** are persisted as **email invitations**
+(`PendingProjectMember(project_id,email,role)` — a new table, *not* a nullable
+`ProjectMember.user_id`) and become real `ProjectMember`s on their **first Google login**
+via `grant_pending_memberships` (new `app/membership.py`, called in `auth.py`
+`google_callback` every login, idempotent, never downgrades). `ProjectOut` gained an
+additive `pending_members[]`. New endpoints (all under `require_project_access`):
+`GET /{id}/member-suggestions`, `POST /{id}/members` (batch), `PATCH /{id}/members/{user_id}`,
+`PATCH /{id}/pending-members/{email}`. Gates: backend **pytest 170** (22 new), **tsc**
+clean. Browser data-flow check was CORS-blocked (preview forced off `:3000`, backend
+allows `:3000` only) — Members tab confirmed to mount without runtime error; full flow
+verifiable on the user's own `:3000`. Deferred (filed): admin-only gating, member/invite
+removal, invite expiry. See [[modules/project-provisioning]] §Settings → Members, `log.md`.
 
 ## Key Recent Facts
 - Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker
@@ -34,43 +37,38 @@ greeting and `UserMenu` still need it (`-zis`). Gates green: backend `pytest` (1
 - Canonical plan: [[sources/mvp-v2-plan]]. Tracking: `bd`. TDD mandatory.
 - Quality gates today: `tsc --noEmit` + Playwright e2e (no unit-test runner in
   `apps/web`); backend `pytest`. ESLint not configured.
+- Project member = a registered `User` (hard FK). Email invites bridge the gap.
 
 ## What just shipped (same day, newest first)
+- **Suggested members / Settings → Members** (`idt`): the above. Spec+plan in
+  `docs/superpowers/{specs,plans}/2026-06-16-suggested-members*.md`.
 - **DRY/altitude refactors** (`iar`/`1yf`/`7xk`/`44x`/`zis`): single meetings
-  fan-out provider, centralized backend project-access gate, and shared
-  calendar-date / avatar / `useCurrentUser` helpers. See [[modules/calendar-sync]],
-  [[modules/project-provisioning]], [[domains/frontend]] §Shared client helpers, `log.md`.
-- **Code-review fixes** (`y6a`/`oqo`/`hky`/`02t`): see Last Updated. Details in
-  [[modules/calendar-sync]] "Hardening (2026-06-16 code review)" and `log.md`.
-- **Upload recording disabled** (`dik`): `/meetings` Upload CTA shown but disabled
-  until the import flow exists.
-- **SVG brand mark** (`qe6`): sidebar logo + favicon use `kabanchik-boar.svg`.
-- **Sidebar direct logout** (`fv7`): footer row is a direct logout button; logout
-  clears all app token keys.
-- **Meetings nav badge** (`cv3`): badge derived from live current-week count.
-- **Shell project switcher** (`iie`): active project from real `GET /projects`.
-- **Home Meetings this week stat** (`9we`) + **Recent meetings** (`ec9`/`0i6`):
-  live calendar events; greeting personalized (`qiw`).
-- **Environment split** (`byz`): production vs agent_preview, env-scoped JWT +
-  token storage, preview all-project access.
-- **Members/Billing/Integrations/Agent settings** (`l5p`/`307`/`d9q`/`7qy`): live.
+  fan-out provider, centralized backend project-access gate (`require_project_access`
+  + `can_access_all_projects`), shared calendar-date / avatar / `useCurrentUser`
+  helpers. See [[modules/calendar-sync]], [[modules/project-provisioning]], [[domains/frontend]].
+- **Code-review fixes** (`y6a`/`oqo`/`hky`/`02t`); **Upload disabled** (`dik`);
+  **SVG brand mark** (`qe6`); **Sidebar direct logout** (`fv7`); **Meetings nav
+  badge** (`cv3`); **Shell project switcher** (`iie`); **Home Meetings stat**
+  (`9we`) + **Recent meetings** (`ec9`/`0i6`); **Env split** (`byz`);
+  **Members/Billing/Integrations/Agent settings** (`l5p`/`307`/`d9q`/`7qy`).
 
 ## Local dev environment
 - Backend = local uvicorn (`backend/.venv`, port 8000, **no --reload** — restart
   manually), `DATABASE_URL=sqlite:////.../backend/.local/dev.db`. Frontend dev on
-  `:3000`. NOTE: the running `:3000` server may be `dev:preview` (agent_preview) —
-  `login`/`auth` e2e specs assume production, so they fail against a preview
-  server (not a code bug). Mint dev JWT: `.local/_mint_dev_token.py`. Seed billing:
-  `.local/_seed_billing.py`.
+  `:3000` (user-run; the preview MCP can't attach to it and a fresh preview lands on a
+  random port → CORS-blocked against the `:3000`-only backend allowlist). NOTE: the
+  running `:3000` may be `dev:preview` (agent_preview, see-all). Mint dev JWT:
+  `.local/_mint_dev_token.py`. Seed billing: `.local/_seed_billing.py`.
 - Frontend: `npm --prefix apps/web run dev:production` (real auth) /
   `dev:preview` (agent). Typecheck: `npm --prefix apps/web run typecheck`.
-  e2e: `npm --prefix apps/web run e2e` (Playwright reuses an existing `:3000`).
-- Docker daemon = Docker Desktop (bd memory `local-docker-daemon-colima`); may be
-  off (so `docker compose config` won't render).
+  Backend tests: `cd backend && .venv/bin/pytest -q`. e2e: `npm --prefix apps/web run e2e`.
+- Docker daemon = Docker Desktop (bd memory `local-docker-daemon-colima`); may be off.
 
 ## Open threads
 - Mock data still drives: meeting detail page, Home Jira/Notion stats, pending
   updates, agent activity, chat (`r0k`). Alembic pending (`soe`). `PendingOAuth`
-  rows never expire (`2of`). `.gitignore` glob breaks `rg` (`n60`).
+  rows never expire (`2of`) — same gap now for `PendingProjectMember` invites.
+  `.gitignore` glob breaks `rg` (`n60`).
+- Member-management follow-ups: removal, admin-only gating, invite expiry.
 - Next value-first backend slice: `wqj` LLM gateway → `die` orchestrator →
   `qor` Rovo + `ilz` Notion MCP → `2u9` jira_notion agent.

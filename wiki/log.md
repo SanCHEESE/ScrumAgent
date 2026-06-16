@@ -10,6 +10,38 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-16 — Suggested members + batch-add + editable roles in Settings → Members (ScrumAgent-idt)
+
+`/settings → Members` went from a read-only role table to read-write, full-stack. Now
+you see meeting participants as **Suggested members**, select and batch-add them, and
+edit roles in **Team members**. People without an account are persisted as **email
+invitations** and become real members on their first Google login.
+
+- **Data model**: new `PendingProjectMember(project_id, email, role)` (composite PK,
+  cascade-deleted with project, email lower-cased) — *not* a nullable `ProjectMember.user_id`
+  (that breaks its composite PK). `ProjectOut` gained an additive `pending_members[]`.
+- **Endpoints** (all under `require_project_access`): `GET /{id}/member-suggestions`
+  (live agent calendar via the existing `_participant_suggestions`, minus agent/members/
+  invites; 409 if Google unconnected), `POST /{id}/members` (batch — existing user →
+  `ProjectMember`, unknown email → invite; idempotent), `PATCH /{id}/members/{user_id}`,
+  `PATCH /{id}/pending-members/{email}`.
+- **Login reconciliation**: new `app/membership.py` `grant_pending_memberships(db, user)`,
+  called in `auth.py`'s `google_callback` after the user upsert, **every** login,
+  idempotent, never downgrades an existing membership.
+- **Frontend**: `MembersSection.tsx` rewritten (editable role `<select>`s, Invited rows,
+  `.db-option` selectable suggestions + "Add selected (N)"); 4 new `lib/api.ts` methods
+  reusing the `MeetingParticipantSuggestion` shape.
+- **Scope/altitude**: mutations gated by `require_project_access` only (see-all preview
+  compat) — admin-only gating, member/invite removal, and invite expiry are filed
+  follow-ups. DRY: reused `MeetingParticipantSuggestionOut`/`_participant_suggestions`
+  rather than new types.
+- **Gates**: backend `pytest` **170 passing** (22 new across model, 4 endpoints,
+  reconciliation, login wiring); frontend `tsc` clean. Browser data-flow check was
+  CORS-blocked (preview forced onto a non-`:3000` port; backend allows `:3000` only) —
+  `/settings → Members` confirmed to mount without runtime error; full flow verifiable
+  on the user's own `:3000` (HMR + CORS-allowed). Spec + plan in
+  `docs/superpowers/{specs,plans}/2026-06-16-suggested-members*.md`.
+
 ## 2026-06-16 — DRY/altitude refactors from the code review (ScrumAgent-iar, -1yf, -7xk, -44x, -zis)
 
 Five behaviour-preserving refactors filed by the same review. Quality gates green:

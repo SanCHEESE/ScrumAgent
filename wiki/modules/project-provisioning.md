@@ -18,8 +18,9 @@ wizard ([[domains/frontend]]). Shipped in `ScrumAgent-lb9`.
 
 | File | Role |
 |---|---|
-| `app/models/project.py` | `Project`, `ProjectMember`, `ProjectCredential`, `PendingOAuth` |
-| `app/routers/projects.py` | create/list/detail + per-project integration endpoints |
+| `app/models/project.py` | `Project`, `ProjectMember`, `PendingProjectMember`, `ProjectCredential`, `PendingOAuth` |
+| `app/routers/projects.py` | create/list/detail + per-project integration, billing, member-management endpoints |
+| `app/membership.py` | `grant_pending_memberships` — invitation → membership reconciliation at login |
 | `app/routers/users.py` | `GET /users/directory` (member picker) |
 | `app/integrations.py` | `IntegrationValidators` (Jira/Notion live checks) + `parse_notion_page_id` |
 | `app/oauth.py` | `GoogleOAuthClient` extended with offline scopes/`access_type`/`prompt` + `AGENT_SCOPES` |
@@ -28,7 +29,8 @@ wizard ([[domains/frontend]]). Shipped in `ScrumAgent-lb9`.
 ## Data model
 
 - **`Project`** — owner, name, description, color, `agent_email`, `google_connected`, Jira fields (`jira_site_url`/`jira_user_email`/`jira_project_key`), Notion fields (`notion_section_url`/`notion_page_id`).
-- **`ProjectMember`** — composite PK `(project_id, user_id)`, `role` ∈ {`viewer`,`member`,`admin`}. The owner is inserted as `admin`; a member row is what makes a project show up in someone's list.
+- **`ProjectMember`** — composite PK `(project_id, user_id)`, `role` ∈ {`viewer`,`member`,`admin`}. The owner is inserted as `admin`; a member row is what makes a project show up in someone's list. Membership is mutable after creation via Settings → Members (below).
+- **`PendingProjectMember`** — composite PK `(project_id, email)`, `role` enum. An **email invitation** for someone who has no account yet (you can't make a `ProjectMember` from an email — its `user_id` is a hard FK). Realized into a real `ProjectMember` on the invitee's first Google login (`app/membership.py`). Cascade-deleted with the project. Email stored lower-cased. (`ScrumAgent-idt`, 2026-06-16.)
 - **`ProjectCredential`** — 1:1 with `Project`; `google_refresh_token`/`jira_api_token`/`notion_token`, each `EncryptedString` (Fernet at rest). Secrets never live on `Project` and are never returned by any endpoint.
 - **`PendingOAuth`** — one-shot bridge: the agent Google grant captured *before* the project row exists, consumed (and deleted) at create.
 
@@ -82,7 +84,11 @@ integrations are otherwise skippable. The Notion section link is parsed to a pag
 | `POST /projects/integrations/notion/test` | validate a Notion token |
 | `POST /projects` | provision (Google required; Jira/Notion validated if present; `members[]` may set `admin`/`member`/`viewer`) |
 | `GET /projects` | projects the caller is a member of (owner included) |
-| `GET /projects/{id}` | detail; `404` for non-members |
+| `GET /projects/{id}` | detail; `404` for non-members; now also carries `pending_members[]` |
+| `GET /projects/{id}/member-suggestions` | live agent-calendar participants not yet on the team (excludes agent/members/invites); `409` if Google unconnected |
+| `POST /projects/{id}/members` | batch add by email — existing user → `ProjectMember`, unknown → `PendingProjectMember` invite; idempotent |
+| `PATCH /projects/{id}/members/{user_id}` | change a registered member's role |
+| `PATCH /projects/{id}/pending-members/{email}` | change an invitation's role |
 | `GET /users/directory` | selectable members |
 | `GET /projects/{id}/integrations` | real per-project status (member-only, never secrets) |
 | `PUT /projects/{id}/integrations/jira` | replace Jira creds — live-validated, `422` on failure |
@@ -131,13 +137,47 @@ category label/colour map in `billing-format.ts`. `ApiKeysTable` and
 `billing-mock.ts` deleted (keys are server config, never per-user). Dev seed:
 `backend/.local/_seed_billing.py`.
 
+## Settings → Members (ScrumAgent-idt, 2026-06-16)
+
+`/settings → Members` is now read-**write** (was a read-only role table). Two sections
+backed by the endpoints above:
+
+- **Team members** — the registered `ProjectMember`s plus the `PendingProjectMember`
+  invitations (shown muted with an "Invited" badge). Each row's role is an inline
+  `<select>` (viewer/member/admin) → `PATCH …/members/{user_id}` or
+  `…/pending-members/{email}`; the response is the full updated `ProjectOut`, which the
+  client swaps into local state.
+- **Suggested members** — `GET …/member-suggestions` (same live-calendar source as
+  `/meetings`, via `_participant_suggestions`, minus the agent, current members, and
+  existing invites). Multi-select + **Add selected (N)** → `POST …/members` with the
+  default role `member`; then roles are edited in Team members.
+
+**Email invitations & login reconciliation.** A project member must be a registered
+`User` (hard `user_id` FK), but suggestions/adds are by email. So adding an email with
+no account writes a `PendingProjectMember`; on that person's **first Google login**,
+`grant_pending_memberships(db, user)` (called in `auth.py`'s `google_callback`, right
+after the user upsert, **every** login, idempotent) turns each invitation addressed to
+their email into a real `ProjectMember` with the invited role and consumes the invite —
+without overwriting an existing membership. Adding an email that *already* has an account
+creates the `ProjectMember` immediately.
+
+Mutations are gated by `require_project_access` only (any member, incl. the `agent_preview`
+see-all dev user) — admin-only gating, member/invite **removal**, and invite **expiry**
+are filed follow-ups, not in this slice. Frontend: `MembersSection.tsx` (rewritten),
+`lib/api.ts` (`listMemberSuggestions`/`addProjectMembers`/`updateMemberRole`/
+`updatePendingMemberRole`, reusing the existing `MeetingParticipantSuggestion` shape).
+
 ## Related
 
-- [[modules/auth]] — reuses the Google OAuth client + Fernet crypto + JWT.
+- [[modules/auth]] — reuses the Google OAuth client + Fernet crypto + JWT; its
+  `google_callback` now also reconciles `PendingProjectMember` invitations via
+  `app/membership.py`.
 - [[domains/backend]] §Persistence — portability conventions these models follow.
 - [[entities/google-workspace]], [[entities/jira]], [[entities/notion]].
 - Project creation member suggestions now come from signed-in users whose emails
   appear in pending Google meeting participants, plus fixed fallbacks
   `dev@municorn.com` and `a.bochkarev@municorn.com`; arbitrary directory users
-  are no longer suggested. Members still select from existing [[modules/auth]]
-  users only (no email invites yet — `bd` follow-up).
+  are no longer suggested. The **creation wizard** still selects from existing
+  [[modules/auth]] users by `user_id`; **email invites** (for people without an
+  account) now exist, but only via Settings → Members (`ScrumAgent-idt`) — not yet
+  wired into the wizard.

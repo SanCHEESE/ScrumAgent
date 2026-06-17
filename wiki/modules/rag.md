@@ -55,9 +55,13 @@ agent/backend module config.
   used by the backlog ingestion pipeline.
 - `clear_project(project_id)` — delete all documents whose `file_source` starts
   with `"{project_id}::"` before a re-sync; LightRAG v1.5.3 has no per-doc metadata
-  or upsert, so delete-then-reinsert is the only safe re-sync path.
-- `status(project_id)` — project-scoped document counts; backs the
-  `GET /projects/{id}/knowledge-base/status` endpoint.
+  or upsert, so delete-then-reinsert is the only safe re-sync path (used by both
+  manual `resync` and periodic `auto` syncs — see [[flows/backlog-ingestion]]).
+- `status(project_id)` — project-scoped document counts, both `by_status`
+  (LightRAG processing state) and `by_source_kind` (parsed from the middle segment
+  of `file_source`, i.e. jira/notion/…); backs the
+  `GET /projects/{id}/knowledge-base/status` endpoint and the live Settings →
+  Knowledge base source counts.
 
 **Project scoping:** LightRAG v1.5.3 has a single shared instance and workspace, so
 project isolation is encoded in the `file_source` field:
@@ -78,4 +82,5 @@ limitation, tracked as `ScrumAgent-o39`).
   (see [[flows/backlog-ingestion]]).
 - `meeting_participation` — will index after analysis (planned).
 - `user_chat` — will retrieve before answering (planned).
-- `/settings -> Knowledge base` — project-scoped doc counts via `status()`.
+- `/settings -> Knowledge base` — now live: real source counts + index health via
+  `status()`, plus an auto-sync toggle and "Sync now" (resync) (`ScrumAgent-bah`).

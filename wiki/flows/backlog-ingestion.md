@@ -3,23 +3,23 @@ type: flow
 title: "Backlog ingestion"
 created: 2026-06-17
 updated: 2026-06-17
-tags: [flow, ingestion, rag, jira, notion]
+tags: [flow, ingestion, rag, jira, notion, auto-sync]
 ---
 
 # Backlog ingestion
 
-Triggered when a project is created with a Jira and/or Notion integration. Fetches
-the existing backlog and indexes it into [[modules/rag]] (via LightRAG) as a
-background job, so chat and agents have backlog context from day one. Manual re-sync
-is supported via a dedicated endpoint.
+Triggered when a project is created with a Jira and/or Notion integration, on a
+manual admin re-sync, or on a periodic **auto-sync** tick. Fetches the existing
+backlog and indexes it into [[modules/rag]] (via LightRAG) as a background job, so
+chat and agents have backlog context from day one and it stays fresh over time.
 
 ```text
-START (project created OR resync requested)
-  -> IngestionRunner.trigger()    # non-blocking asyncio.create_task
+START (project created OR resync requested OR auto-sync due)
+  -> IngestionRunner.schedule()   # non-blocking asyncio.create_task
   -> run_ingestion()              # own DB session
   -> execute_run()                # per-source error isolation
   -> JiraReadClient / NotionReadClient
-  -> RagClient.clear_project()    # on resync only
+  -> RagClient.clear_project()    # on resync OR auto (LightRAG has no upsert)
   -> RagClient.index_documents()
   -> LightRAG POST /documents/texts
   -> END (IngestionRun status = completed | partial | failed)
@@ -49,19 +49,43 @@ START (project created OR resync requested)
    `"{project_id}::{source_kind}::{source_id}"` — this is the only project
    isolation available in LightRAG v1.5.3 (shared graph; see [[modules/rag]]
    for the known limitation tracked as `ScrumAgent-o39`).
-8. On **re-sync**, `clear_project` deletes all documents with the matching
-   `file_source` prefix before re-inserting; this is required because LightRAG
-   v1.5.3 has no per-doc metadata, caller-id, or upsert support (API spike
-   `ScrumAgent-m3c`).
+8. On **re-sync** and **auto-sync**, `clear_project` deletes all documents with
+   the matching `file_source` prefix before re-inserting; this is required because
+   LightRAG v1.5.3 has no per-doc metadata, caller-id, or upsert support (API
+   spike `ScrumAgent-m3c`) — an edited issue/page would otherwise pile up as a new
+   content-hash doc, orphaning the old one.
+
+## Periodic auto-sync (`app/auto_sync.py`)
+
+A background `asyncio` loop, started/stopped in the FastAPI lifespan, keeps each
+project's index fresh without manual action (`ScrumAgent-3mo`):
+
+- **`select_due_projects(session, now, interval_hours)`** — pure query. A project
+  is due when it has a Jira/Notion integration, `Project.auto_sync_enabled` is set,
+  no run is `pending`/`running` (overlap guard), and it has either never completed
+  a sync or its last `completed`/`partial` run finished ≥ `interval` ago.
+- **`run_due_syncs(...)`** — creates one `IngestionRun(trigger=auto)` per due
+  project and schedules it via the shared `IngestionRunner`.
+- **`AutoSyncScheduler.start()/stop()`** — the thin loop seam: `run_due_syncs` then
+  sleep `tick_seconds`; one failed tick logs and continues.
+
+Cadence is a **backend setting** (`rag_auto_sync_interval_hours`, default 6h), not
+per-project; each project only flips the on/off (`auto_sync_enabled`, default on).
+A global `rag_auto_sync_enabled` kill-switch disables the loop. **Single-process
+assumption:** multiple uvicorn workers would each run the loop — the
+pending/running guard limits damage, but horizontal scaling should revisit this
+(external cron / DB lock).
 
 ## Endpoints
 
-- **`GET /projects/{id}/knowledge-base/status`** (members) — returns
-  project-scoped document counts from `RagClient.status()`. Backs the
-  Settings → Knowledge base tab.
-- **`POST /projects/{id}/knowledge-base/resync`** (admin-only, gated by
-  `require_project_admin`) — enqueues a new `IngestionRun` with trigger
-  `resync` and fires it as a background task.
+- **`GET /projects/{id}/knowledge-base/status`** (members) — returns project-scoped
+  document counts from `RagClient.status()` (now broken down `by_source_kind`),
+  the last `IngestionRun`, plus `auto_sync_enabled`, `auto_sync_interval_hours`,
+  and a computed `next_sync_at`. Backs the (now live) Settings → Knowledge base tab.
+- **`POST /projects/{id}/knowledge-base/resync`** (admin-only) — enqueues an
+  `IngestionRun(trigger=resync)` and fires it. Backs the "Sync now" button.
+- **`PUT /projects/{id}/knowledge-base/auto-sync`** `{enabled}` (admin-only) —
+  flips `Project.auto_sync_enabled`; the scheduler honors it on the next tick.
 
 ## Data model
 
@@ -72,14 +96,19 @@ START (project created OR resync requested)
 | `id` | UUID primary key |
 | `project_id` | FK to `Project` |
 | `status` | `pending` → `running` → `completed` / `partial` / `failed` |
-| `trigger` | `created` or `resync` |
+| `trigger` | `created`, `resync`, or `auto` |
 | `created_at` / `updated_at` | timestamps |
+
+`Project.auto_sync_enabled` (bool, default true) holds the per-project toggle.
+*No Alembic yet (`ScrumAgent-soe`):* `create_all` adds the column on fresh DBs but
+does not alter existing tables — existing dev DBs need a one-line `ALTER` or reset.
 
 ## Scope (text-only slice)
 
-This slice is text-only. Deferred to later slices:
+This slice is text-only. Shipped since the first slice: **periodic auto-sync**
+(`ScrumAgent-bah`). Still deferred:
 - Image/attachment ingestion.
-- Automatic background re-sync (scheduled or event-driven).
+- Event-driven (webhook) sync — auto-sync is interval-based.
 - Chat-side retrieval against ingested backlog (`ScrumAgent-n6h`).
 
 ## Related

@@ -109,3 +109,4 @@ class IngestionStatus(str, enum.Enum):
 class IngestionTrigger(str, enum.Enum):
     created = "created"
     resync = "resync"
+    auto = "auto"

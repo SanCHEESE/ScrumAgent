@@ -217,11 +217,25 @@ class IngestionRunOut(BaseModel):
 class RagStatusOut(BaseModel):
     total: int
     by_status: dict[str, int]
+    by_source_kind: dict[str, int] = Field(default_factory=dict)
 
 
 class KnowledgeBaseStatusOut(BaseModel):
+    auto_sync_enabled: bool
+    auto_sync_interval_hours: float
+    next_sync_at: datetime | None
     last_run: IngestionRunOut | None
     rag: RagStatusOut | None
+
+
+class AutoSyncToggleIn(BaseModel):
+    enabled: bool
+
+
+class AutoSyncSettingOut(BaseModel):
+    auto_sync_enabled: bool
+    auto_sync_interval_hours: float
+    next_sync_at: datetime | None
 
 
 class MeetingParticipantSuggestionOut(BaseModel):
@@ -1235,11 +1249,42 @@ async def knowledge_base_status(
     rag_out: RagStatusOut | None = None
     try:
         rag_status = await RagClient.from_settings(settings).status(project.id)
-        rag_out = RagStatusOut(total=rag_status.total, by_status=rag_status.by_status)
+        rag_out = RagStatusOut(
+            total=rag_status.total,
+            by_status=rag_status.by_status,
+            by_source_kind=rag_status.by_source_kind,
+        )
     except RagError:
         rag_out = None
     return KnowledgeBaseStatusOut(
-        last_run=_serialize_run(run) if run else None, rag=rag_out
+        auto_sync_enabled=project.auto_sync_enabled,
+        auto_sync_interval_hours=settings.rag_auto_sync_interval_hours,
+        next_sync_at=_next_sync_at(project, db, settings),
+        last_run=_serialize_run(run) if run else None,
+        rag=rag_out,
+    )
+
+
+@router.put(
+    "/{project_id}/knowledge-base/auto-sync", response_model=AutoSyncSettingOut
+)
+def set_knowledge_base_auto_sync(
+    req: AutoSyncToggleIn,
+    project: Project = Depends(require_project_admin),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> AutoSyncSettingOut:
+    """Toggle periodic auto-sync for this project (admin-only, like resync).
+
+    The cadence itself is a backend setting; this only flips the per-project
+    on/off the scheduler honors.
+    """
+    project.auto_sync_enabled = req.enabled
+    db.commit()
+    return AutoSyncSettingOut(
+        auto_sync_enabled=project.auto_sync_enabled,
+        auto_sync_interval_hours=settings.rag_auto_sync_interval_hours,
+        next_sync_at=_next_sync_at(project, db, settings),
     )
 
 
@@ -1304,6 +1349,35 @@ def _serialize(project: Project, db: Session) -> ProjectOut:
         members=members,
         pending_members=pending_members,
         created_at=project.created_at,
+    )
+
+
+def _next_sync_at(
+    project: Project, db: Session, settings: Settings
+) -> datetime | None:
+    """When the scheduler would next auto-sync this project.
+
+    ``None`` when auto-sync is off, or when it's on but the project has never
+    completed a sync (the UI reads that as "pending first sync").
+    """
+    if not project.auto_sync_enabled:
+        return None
+    last = (
+        db.query(IngestionRun)
+        .filter(
+            IngestionRun.project_id == project.id,
+            IngestionRun.status.in_(
+                [IngestionStatus.completed, IngestionStatus.partial]
+            ),
+            IngestionRun.finished_at.isnot(None),
+        )
+        .order_by(IngestionRun.finished_at.desc())
+        .first()
+    )
+    if last is None or last.finished_at is None:
+        return None
+    return _as_utc(last.finished_at) + timedelta(
+        hours=settings.rag_auto_sync_interval_hours
     )
 
 

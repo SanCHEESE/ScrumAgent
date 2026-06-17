@@ -42,6 +42,7 @@ class IndexResult:
 class RagStatus:
     total: int
     by_status: dict[str, int]
+    by_source_kind: dict[str, int] = field(default_factory=dict)
 
 
 def _file_source(project_id: str, doc: RagDocument) -> str:
@@ -143,6 +144,7 @@ class RagClient:
 
     async def status(self, project_id: str) -> RagStatus:
         by_status: dict[str, int] = {}
+        by_source_kind: dict[str, int] = {}
         total = 0
         try:
             async with self._client_factory() as client:
@@ -150,6 +152,12 @@ class RagClient:
                     total += 1
                     key = str(doc.get("status", "unknown"))
                     by_status[key] = by_status.get(key, 0) + 1
+                    # file_path is "{project_id}::{source_kind}::{source_id}".
+                    parts = str(doc.get("file_path", "")).split("::")
+                    if len(parts) >= 2:
+                        by_source_kind[parts[1]] = by_source_kind.get(parts[1], 0) + 1
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             raise RagError(f"status failed: {exc}") from exc
-        return RagStatus(total=total, by_status=by_status)
+        return RagStatus(
+            total=total, by_status=by_status, by_source_kind=by_source_kind
+        )

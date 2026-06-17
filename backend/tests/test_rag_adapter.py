@@ -135,3 +135,15 @@ def test_status_counts_by_status_for_project():
     assert isinstance(status, RagStatus)
     assert status.total == 2
     assert status.by_status == {"processed": 1, "pending": 1}
+
+
+def test_status_counts_by_source_kind_for_project():
+    docs = [
+        {"id": "1", "file_path": "proj-1::jira::A", "status": "processed"},
+        {"id": "2", "file_path": "proj-1::jira::B", "status": "pending"},
+        {"id": "3", "file_path": "proj-1::notion::C", "status": "processed"},
+        {"id": "4", "file_path": "proj-9::jira::D", "status": "processed"},
+    ]
+    status = asyncio.run(_client(_paginated_handler(docs, deleted=[])).status("proj-1"))
+    # The kind is the middle segment of "{project_id}::{kind}::{id}".
+    assert status.by_source_kind == {"jira": 2, "notion": 1}

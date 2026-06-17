@@ -10,6 +10,44 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-17 — RAG auto-sync + real Knowledge base settings tab (ScrumAgent-bah)
+
+Extended the ingestion epic (`lcw`) with periodic auto-sync and made the mock
+Knowledge base settings tab real. Decisions: per-project on/off toggle + a fixed
+backend cadence (6h), on by default; whole KB tab made real except search (deferred
+to the unbuilt retrieve path `n6h`/`o39`, shown as an honest empty state).
+
+**Backend:**
+
+- `IngestionTrigger.auto` added; `execute_run` now clears-then-reindexes for
+  `resync` **or** `auto` (LightRAG has no upsert — edited items would orphan).
+- `Project.auto_sync_enabled` (bool, default true). No Alembic yet (`soe`) — fresh
+  DBs get the column via `create_all`; existing dev DBs need a one-line `ALTER`.
+- `app/auto_sync.py` — in-process scheduler (approach A): `select_due_projects`
+  (integration + enabled + no in-flight run + never-synced-or-stale),
+  `run_due_syncs` (one `IngestionRun(trigger=auto)` per due project via the shared
+  `IngestionRunner`), `AutoSyncScheduler.start/stop` (asyncio loop seam). Wired in
+  `main.py` lifespan behind the `rag_auto_sync_enabled` kill-switch. Settings:
+  `rag_auto_sync_enabled`, `rag_auto_sync_interval_hours=6`,
+  `rag_auto_sync_tick_seconds=300`. Single-process assumption noted.
+- `RagClient.status` now also returns `by_source_kind` (parsed from `file_source`).
+- Endpoints: `PUT /knowledge-base/auto-sync {enabled}` (admin-only); `GET
+  /knowledge-base/status` extended with `auto_sync_enabled`,
+  `auto_sync_interval_hours`, computed `next_sync_at`, and `rag.by_source_kind`.
+- 209 backend tests green (foundation 3, scheduler 10, KB API 4 new + existing).
+
+**Frontend:**
+
+- `KnowledgeBaseSection.tsx` rewritten from mock to live: real source counts
+  (`by_source_kind`; meetings shown as "indexed when meetings ship"), real index
+  health (last run, total docs, `by_status`), admin-gated auto-sync `Toggle` (PUT)
+  and "Sync now" (resync), search rendered as a disabled "available when chat ships"
+  empty state. New `lib/api.ts` methods: `getKnowledgeBaseStatus`,
+  `resyncKnowledgeBase`, `setKnowledgeBaseAutoSync`. Typecheck clean; 16 settings
+  e2e green (4 new, route-mocked).
+
+Spec: `docs/superpowers/specs/2026-06-17-rag-auto-sync-design.md`.
+
 ## 2026-06-17 — Jira/Notion backlog ingestion into LightRAG (ScrumAgent-lcw)
 
 Shipped the first RAG write path: when a project is created with Jira and/or Notion

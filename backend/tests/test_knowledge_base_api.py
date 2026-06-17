@@ -115,6 +115,69 @@ def test_status_returns_last_run(client, db_session):
     assert body["rag"] is None
 
 
+def test_status_includes_auto_sync_fields(client, db_session):
+    user = _user(db_session)
+    project = _project(db_session, user)
+    resp = client.get(
+        f"/projects/{project.id}/knowledge-base/status", headers=_auth(user.id)
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["auto_sync_enabled"] is True  # on by default
+    assert body["auto_sync_interval_hours"] == 6.0
+    assert body["next_sync_at"] is None  # never synced yet
+
+
+def test_status_next_sync_at_is_interval_after_last_success(client, db_session):
+    from datetime import datetime, timezone
+
+    user = _user(db_session)
+    project = _project(db_session, user)
+    finished = datetime(2026, 6, 17, 0, 0, tzinfo=timezone.utc)
+    db_session.add(
+        IngestionRun(
+            project_id=project.id,
+            trigger=IngestionTrigger.auto,
+            status=IngestionStatus.completed,
+            finished_at=finished,
+        )
+    )
+    db_session.commit()
+    resp = client.get(
+        f"/projects/{project.id}/knowledge-base/status", headers=_auth(user.id)
+    )
+    body = resp.json()
+    # 6h after the last successful run
+    assert body["next_sync_at"].startswith("2026-06-17T06:00")
+
+
+def test_auto_sync_toggle_admin_updates_flag(client, db_session):
+    user = _user(db_session)
+    project = _project(db_session, user, role=ProjectRole.admin)
+    resp = client.put(
+        f"/projects/{project.id}/knowledge-base/auto-sync",
+        headers=_auth(user.id),
+        json={"enabled": False},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["auto_sync_enabled"] is False
+    assert body["next_sync_at"] is None  # disabled -> no scheduled next sync
+    db_session.expire_all()
+    assert db_session.get(Project, project.id).auto_sync_enabled is False
+
+
+def test_auto_sync_toggle_non_admin_forbidden(client, db_session):
+    user = _user(db_session)
+    project = _project(db_session, user, role=ProjectRole.member)
+    resp = client.put(
+        f"/projects/{project.id}/knowledge-base/auto-sync",
+        headers=_auth(user.id),
+        json={"enabled": False},
+    )
+    assert resp.status_code == 403
+
+
 def test_create_project_with_jira_enqueues_run(client, db_session, runner):
     from app.models import PendingOAuth
 

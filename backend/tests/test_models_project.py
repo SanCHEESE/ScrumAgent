@@ -141,3 +141,13 @@ def test_pending_oauth_refresh_token_encrypted(db_session):
     got = db_session.get(PendingOAuth, pending.id)
     assert got.refresh_token == "1//pending-secret"
     assert got.provider == "google"
+
+
+def test_project_auto_sync_enabled_defaults_true(db_session):
+    owner = _make_user(db_session)
+    project = Project(owner_id=owner.id, name="P", agent_email="a@municorn.com")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+
+    assert project.auto_sync_enabled is True

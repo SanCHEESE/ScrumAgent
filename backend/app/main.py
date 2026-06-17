@@ -23,7 +23,20 @@ async def lifespan(_app):
     settings = get_settings()
     crypto.configure(settings.secret_key)
     init_db(make_engine(settings.database_url))
-    yield
+
+    scheduler = None
+    if settings.rag_auto_sync_enabled:
+        from app.auto_sync import AutoSyncScheduler
+        from app.deps import _session_factory
+
+        scheduler = AutoSyncScheduler(settings, _session_factory())
+        await scheduler.start()
+        _app.state.auto_sync_scheduler = scheduler
+    try:
+        yield
+    finally:
+        if scheduler is not None:
+            await scheduler.stop()
 
 
 app = FastAPI(title="Kabanchik", lifespan=lifespan)

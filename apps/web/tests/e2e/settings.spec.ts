@@ -82,6 +82,11 @@ async function mockSettingsApi(
   );
   await page
     .context()
+    .route(`${API}/projects/*/knowledge-base/status`, (route) =>
+      route.fulfill({ json: KB_STATUS_EMPTY }),
+    );
+  await page
+    .context()
     .route(`${API}/projects/*/settings/agent`, async (route) => {
       const url = route.request().url();
       const id = url.match(/projects\/([^/]+)\/settings/)?.[1] ?? "";
@@ -411,6 +416,144 @@ test.describe("Integrations (per-project, live)", () => {
     await expect(
       page.locator(".integration-form").getByRole("alert"),
     ).toContainText("Jira credentials did not validate");
+  });
+});
+
+const KB_STATUS_EMPTY = {
+  auto_sync_enabled: true,
+  auto_sync_interval_hours: 6,
+  next_sync_at: null,
+  last_run: null,
+  rag: null,
+};
+
+const KB_STATUS_SYNCED = {
+  auto_sync_enabled: true,
+  auto_sync_interval_hours: 6,
+  next_sync_at: "2026-06-17T06:00:00Z",
+  last_run: {
+    id: "run-1",
+    status: "completed",
+    trigger: "auto",
+    jira_total: 120,
+    jira_submitted: 120,
+    notion_total: 8,
+    notion_submitted: 8,
+    failed_count: 0,
+    error: null,
+    created_at: "2026-06-17T00:00:00Z",
+    finished_at: "2026-06-17T00:01:00Z",
+  },
+  rag: {
+    total: 128,
+    by_status: { processed: 128 },
+    by_source_kind: { jira: 120, notion: 8 },
+  },
+};
+
+test.describe("Knowledge base (per-project, live)", () => {
+  test("renders real indexed source counts and index health", async ({
+    page,
+  }) => {
+    await mockSettingsApi(page, {});
+    await page.context().route(`${API}/projects/*/knowledge-base/status`, (route) =>
+      route.fulfill({ json: KB_STATUS_SYNCED }),
+    );
+    await page.goto("/settings");
+    await page
+      .locator(".settings-nav-item")
+      .filter({ hasText: "Knowledge base" })
+      .click();
+
+    const sources = page
+      .locator(".setting-group")
+      .filter({ has: page.getByText(/Indexed sources/i) });
+    await expect(sources).toContainText("Jira issues");
+    await expect(sources).toContainText("120");
+    await expect(sources).toContainText("Notion pages");
+    await expect(sources).toContainText("8");
+    // Meetings aren't indexed yet — honest placeholder, not a fabricated count.
+    await expect(sources).toContainText(/when meetings ship/i);
+
+    const health = page
+      .locator(".setting-group")
+      .filter({ has: page.getByText(/Index health/i) });
+    await expect(health).toContainText("128"); // total documents indexed
+    await expect(health).toContainText(/every 6h/i); // auto-sync cadence
+  });
+
+  test("auto-sync toggle saves via PUT", async ({ page }) => {
+    await mockSettingsApi(page, {});
+    await page.context().route(`${API}/projects/*/knowledge-base/status`, (route) =>
+      route.fulfill({ json: KB_STATUS_SYNCED }),
+    );
+    let putBody: Record<string, unknown> | null = null;
+    await page
+      .context()
+      .route(`${API}/projects/*/knowledge-base/auto-sync`, async (route) => {
+        putBody = route.request().postDataJSON();
+        await route.fulfill({
+          json: {
+            auto_sync_enabled: false,
+            auto_sync_interval_hours: 6,
+            next_sync_at: null,
+          },
+        });
+      });
+    await page.goto("/settings");
+    await page
+      .locator(".settings-nav-item")
+      .filter({ hasText: "Knowledge base" })
+      .click();
+
+    const toggle = page.getByLabel("Automatic sync");
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(putBody).toEqual({ enabled: false });
+  });
+
+  test("Sync now triggers a re-sync via POST", async ({ page }) => {
+    await mockSettingsApi(page, {});
+    await page.context().route(`${API}/projects/*/knowledge-base/status`, (route) =>
+      route.fulfill({ json: KB_STATUS_SYNCED }),
+    );
+    let resynced = false;
+    await page
+      .context()
+      .route(`${API}/projects/*/knowledge-base/resync`, async (route) => {
+        resynced = true;
+        await route.fulfill({
+          status: 202,
+          json: { ...KB_STATUS_SYNCED.last_run, status: "pending", trigger: "resync" },
+        });
+      });
+    await page.goto("/settings");
+    await page
+      .locator(".settings-nav-item")
+      .filter({ hasText: "Knowledge base" })
+      .click();
+
+    await page.getByRole("button", { name: /Sync now/i }).click();
+    await expect.poll(() => resynced).toBe(true);
+  });
+
+  test("search box shows the deferred empty state, not fake results", async ({
+    page,
+  }) => {
+    await mockSettingsApi(page, {});
+    await page.context().route(`${API}/projects/*/knowledge-base/status`, (route) =>
+      route.fulfill({ json: KB_STATUS_SYNCED }),
+    );
+    await page.goto("/settings");
+    await page
+      .locator(".settings-nav-item")
+      .filter({ hasText: "Knowledge base" })
+      .click();
+
+    await expect(page.getByText(/available .*when chat ships/i)).toBeVisible();
+    // The old mock hits must be gone.
+    await expect(page.getByText("PLAT-234")).toHaveCount(0);
   });
 });
 

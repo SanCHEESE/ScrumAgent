@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     jira_page_size: int = 100
     notion_max_depth: int = 5
 
+    # --- Backlog auto-sync (periodic re-index of Jira/Notion into LightRAG) ---
+    rag_auto_sync_enabled: bool = True  # global kill-switch for the scheduler loop
+    rag_auto_sync_interval_hours: float = 6.0  # fixed cadence (not per-project)
+    rag_auto_sync_tick_seconds: float = 300.0  # how often the loop re-checks
+
     # --- GCP deploy (optional) ---
     gcp_project_id: str | None = None
     gcp_region: str | None = None

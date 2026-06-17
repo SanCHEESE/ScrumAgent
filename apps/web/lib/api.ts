@@ -245,6 +245,40 @@ export interface Billing {
   invocations_this_cycle: number;
 }
 
+export interface IngestionRunOut {
+  id: string;
+  status: string;
+  trigger: string;
+  jira_total: number | null;
+  jira_submitted: number | null;
+  notion_total: number | null;
+  notion_submitted: number | null;
+  failed_count: number;
+  error: string | null;
+  created_at: string;
+  finished_at: string | null;
+}
+
+export interface RagStatus {
+  total: number;
+  by_status: Record<string, number>;
+  by_source_kind: Record<string, number>;
+}
+
+export interface KnowledgeBaseStatus {
+  auto_sync_enabled: boolean;
+  auto_sync_interval_hours: number;
+  next_sync_at: string | null;
+  last_run: IngestionRunOut | null;
+  rag: RagStatus | null;
+}
+
+export interface AutoSyncSetting {
+  auto_sync_enabled: boolean;
+  auto_sync_interval_hours: number;
+  next_sync_at: string | null;
+}
+
 export const api = {
   me: () => apiFetch<MeResponse>("/auth/me"),
   listUsers: () => apiFetch<DirectoryUser[]>("/users/directory"),
@@ -339,6 +373,20 @@ export const api = {
     ),
   getBilling: (projectId: string) =>
     apiFetch<Billing>(`/projects/${encodeURIComponent(projectId)}/billing`),
+  getKnowledgeBaseStatus: (projectId: string) =>
+    apiFetch<KnowledgeBaseStatus>(
+      `/projects/${encodeURIComponent(projectId)}/knowledge-base/status`,
+    ),
+  resyncKnowledgeBase: (projectId: string) =>
+    apiFetch<IngestionRunOut>(
+      `/projects/${encodeURIComponent(projectId)}/knowledge-base/resync`,
+      { method: "POST" },
+    ),
+  setKnowledgeBaseAutoSync: (projectId: string, enabled: boolean) =>
+    apiFetch<AutoSyncSetting>(
+      `/projects/${encodeURIComponent(projectId)}/knowledge-base/auto-sync`,
+      { method: "PUT", body: JSON.stringify({ enabled }) },
+    ),
   testStoredIntegration: (projectId: string, provider: IntegrationProvider) =>
     apiFetch<TestResult>(
       `/projects/${encodeURIComponent(projectId)}/integrations/${provider}/test`,

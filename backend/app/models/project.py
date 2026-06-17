@@ -54,6 +54,12 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     notion_section_url: Mapped[str | None] = mapped_column(String(1024))
     notion_page_id: Mapped[str | None] = mapped_column(String(64))
 
+    # Periodic LightRAG re-sync of the Jira/Notion backlog. On by default; the
+    # cadence itself is a backend setting, not per-project.
+    auto_sync_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

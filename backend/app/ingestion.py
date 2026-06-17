@@ -55,7 +55,7 @@ async def execute_run(
     run.started_at = _now()
     session.commit()
 
-    if run.trigger == IngestionTrigger.resync:
+    if run.trigger in (IngestionTrigger.resync, IngestionTrigger.auto):
         try:
             await rag.clear_project(project.id)
         except Exception as exc:  # noqa: BLE001 — surface as a hard failure

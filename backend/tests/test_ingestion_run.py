@@ -137,3 +137,17 @@ def test_resync_clears_before_indexing():
     ))
     assert rag.cleared == [project.id]
     assert run.status == IngestionStatus.completed
+
+
+def test_auto_clears_before_indexing():
+    db = _session()
+    project = _project(db, with_jira=True)
+    run = _run(db, project, trigger=IngestionTrigger.auto)
+    rag = FakeRag()
+    asyncio.run(execute_run(
+        run, session=db, project=project, rag=rag, jira_reader=FakeJira([_doc(1)]),
+    ))
+    # Auto-sync must clear-then-reindex like resync — LightRAG has no upsert, so
+    # edited items would otherwise pile up as orphaned content-hash docs.
+    assert rag.cleared == [project.id]
+    assert run.status == IngestionStatus.completed

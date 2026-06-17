@@ -75,7 +75,7 @@ class JiraReadClient:
                 issues = body.get("issues", []) or []
                 for issue in issues:
                     out.append(self._to_doc(issue))
-                total = body.get("total", 0)
+                total = body.get("total") or 0
                 start_at += len(issues)
                 if not issues or start_at >= total:
                     break

@@ -89,6 +89,14 @@ def get_integration_validators() -> IntegrationValidators:
     return IntegrationValidators()
 
 
+def get_ingestion_runner(
+    settings: Settings = Depends(get_settings),
+) -> "IngestionRunner":
+    from app.ingestion import IngestionRunner
+
+    return IngestionRunner(settings, _session_factory())
+
+
 _bearer = HTTPBearer(auto_error=False)
 PREVIEW_GOOGLE_SUB = "dev-sub"
 PREVIEW_EMAIL = "dev@municorn.com"

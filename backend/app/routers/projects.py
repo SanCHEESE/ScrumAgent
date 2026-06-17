@@ -27,10 +27,12 @@ from app.deps import (
     get_current_user,
     get_db,
     get_google_calendar,
+    get_ingestion_runner,
     get_integration_validators,
     get_settings,
     is_agent_preview,
 )
+from app.ingestion import IngestionRunner
 from app.google_calendar import (
     GoogleAuthRevokedError,
     GoogleCalendarClient,
@@ -38,6 +40,7 @@ from app.google_calendar import (
 )
 from app.integrations import IntegrationValidators, parse_notion_page_id
 from app.models import (
+    IngestionRun,
     LlmUsage,
     PendingOAuth,
     PendingProjectMember,
@@ -47,7 +50,15 @@ from app.models import (
     ProjectMember,
     User,
 )
-from app.models.types import ProjectRole, ResponseStyle, UsageKind, uuid_str
+from app.models.types import (
+    IngestionStatus,
+    IngestionTrigger,
+    ProjectRole,
+    ResponseStyle,
+    UsageKind,
+    uuid_str,
+)
+from app.rag import RagClient, RagError
 from app.oauth import AGENT_SCOPES, GoogleOAuthClient
 from app.security import sign_oauth_state, verify_oauth_state
 
@@ -93,6 +104,29 @@ def require_project_access(
     project = db.get(Project, project_id)
     if project is None or not (see_all or _is_member(db, project_id, user.id)):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
+    return project
+
+
+def require_project_admin(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    see_all: bool = Depends(can_access_all_projects),
+) -> Project:
+    """Resolve ``{project_id}`` and require the caller be a project admin.
+
+    404 when missing/not-a-member (don't leak existence); 403 when a member but
+    not admin. Aligns with the role-enforcement direction in ScrumAgent-ho8.
+    """
+    project = db.get(Project, project_id)
+    if project is None or not (see_all or _is_member(db, project_id, user.id)):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
+    if not see_all:
+        membership = db.get(
+            ProjectMember, {"project_id": project_id, "user_id": user.id}
+        )
+        if membership is None or membership.role != ProjectRole.admin:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin role required")
     return project
 
 
@@ -164,6 +198,30 @@ class ProjectOut(BaseModel):
     members: list[MemberOut]
     pending_members: list[PendingMemberOut]
     created_at: datetime
+
+
+class IngestionRunOut(BaseModel):
+    id: str
+    status: str
+    trigger: str
+    jira_total: int | None
+    jira_submitted: int | None
+    notion_total: int | None
+    notion_submitted: int | None
+    failed_count: int
+    error: str | None
+    created_at: datetime
+    finished_at: datetime | None
+
+
+class RagStatusOut(BaseModel):
+    total: int
+    by_status: dict[str, int]
+
+
+class KnowledgeBaseStatusOut(BaseModel):
+    last_run: IngestionRunOut | None
+    rag: RagStatusOut | None
 
 
 class MeetingParticipantSuggestionOut(BaseModel):
@@ -330,6 +388,7 @@ async def create_project(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     validators: IntegrationValidators = Depends(get_integration_validators),
+    runner: IngestionRunner = Depends(get_ingestion_runner),
 ) -> ProjectOut:
     """Provision a project. Google auth is required; provided Jira/Notion tokens
     are re-validated server-side (422) before anything is written."""
@@ -409,6 +468,18 @@ async def create_project(
     db.delete(pending)  # one-shot grant consumed
     db.commit()
     db.refresh(project)
+
+    if project.jira_project_key or project.notion_page_id:
+        run = IngestionRun(
+            project_id=project.id,
+            trigger=IngestionTrigger.created,
+            status=IngestionStatus.pending,
+        )
+        db.add(run)
+        db.commit()
+        db.refresh(run)
+        runner.schedule(run.id)
+
     return _serialize(project, db)
 
 
@@ -1147,6 +1218,57 @@ async def list_member_suggestions(
     ]
 
 
+@router.get(
+    "/{project_id}/knowledge-base/status", response_model=KnowledgeBaseStatusOut
+)
+async def knowledge_base_status(
+    project: Project = Depends(require_project_access),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> KnowledgeBaseStatusOut:
+    run = (
+        db.query(IngestionRun)
+        .filter(IngestionRun.project_id == project.id)
+        .order_by(IngestionRun.created_at.desc())
+        .first()
+    )
+    rag_out: RagStatusOut | None = None
+    try:
+        rag_status = await RagClient.from_settings(settings).status(project.id)
+        rag_out = RagStatusOut(total=rag_status.total, by_status=rag_status.by_status)
+    except RagError:
+        rag_out = None
+    return KnowledgeBaseStatusOut(
+        last_run=_serialize_run(run) if run else None, rag=rag_out
+    )
+
+
+@router.post(
+    "/{project_id}/knowledge-base/resync",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=IngestionRunOut,
+)
+def resync_knowledge_base(
+    project: Project = Depends(require_project_admin),
+    db: Session = Depends(get_db),
+    runner: IngestionRunner = Depends(get_ingestion_runner),
+) -> IngestionRunOut:
+    if not (project.jira_project_key or project.notion_page_id):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "No Jira/Notion integration to sync"
+        )
+    run = IngestionRun(
+        project_id=project.id,
+        trigger=IngestionTrigger.resync,
+        status=IngestionStatus.pending,
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    runner.schedule(run.id)
+    return _serialize_run(run)
+
+
 def _serialize(project: Project, db: Session) -> ProjectOut:
     members = []
     for member in project.members:
@@ -1182,6 +1304,22 @@ def _serialize(project: Project, db: Session) -> ProjectOut:
         members=members,
         pending_members=pending_members,
         created_at=project.created_at,
+    )
+
+
+def _serialize_run(run: IngestionRun) -> IngestionRunOut:
+    return IngestionRunOut(
+        id=run.id,
+        status=run.status.value,
+        trigger=run.trigger.value,
+        jira_total=run.jira_total,
+        jira_submitted=run.jira_submitted,
+        notion_total=run.notion_total,
+        notion_submitted=run.notion_submitted,
+        failed_count=run.failed_count,
+        error=run.error,
+        created_at=run.created_at,
+        finished_at=run.finished_at,
     )
 
 

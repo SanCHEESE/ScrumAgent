@@ -77,6 +77,18 @@ def test_index_documents_raises_ragerror_on_http_error():
         pass
 
 
+def test_index_documents_wraps_malformed_json_as_ragerror():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="not json")
+
+    docs = [RagDocument(text="x", source_kind="jira", source_id="K-1", title="t", source_uri="u")]
+    try:
+        asyncio.run(_client(handler).index_documents("proj-1", docs))
+        raise AssertionError("expected RagError")
+    except RagError:
+        pass
+
+
 def _paginated_handler(documents, *, deleted):
     """Serve /documents/paginated (one page) and capture deletes."""
 

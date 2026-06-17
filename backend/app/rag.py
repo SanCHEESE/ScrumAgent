@@ -91,7 +91,7 @@ class RagClient:
                 )
                 resp.raise_for_status()
                 track_id = resp.json().get("track_id")
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
             raise RagError(f"index failed: {exc}") from exc
         return IndexResult(submitted=len(docs), track_id=track_id)
 
@@ -126,7 +126,9 @@ class RagClient:
         try:
             async with self._client_factory() as client:
                 async for doc in self._iter_project_docs(client, project_id):
-                    ids.append(doc["id"])
+                    doc_id = doc.get("id")
+                    if doc_id:
+                        ids.append(doc_id)
                 for start in range(0, len(ids), 100):
                     resp = await client.request(
                         "DELETE",
@@ -135,7 +137,7 @@ class RagClient:
                         json={"doc_ids": ids[start : start + 100]},
                     )
                     resp.raise_for_status()
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
             raise RagError(f"clear failed: {exc}") from exc
         return len(ids)
 
@@ -148,6 +150,6 @@ class RagClient:
                     total += 1
                     key = str(doc.get("status", "unknown"))
                     by_status[key] = by_status.get(key, 0) + 1
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
             raise RagError(f"status failed: {exc}") from exc
         return RagStatus(total=total, by_status=by_status)

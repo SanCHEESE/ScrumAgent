@@ -112,6 +112,7 @@ def test_status_returns_last_run(client, db_session):
     body = resp.json()
     assert body["last_run"]["status"] == "completed"
     assert body["last_run"]["jira_submitted"] == 3
+    assert body["rag"] is None
 
 
 def test_create_project_with_jira_enqueues_run(client, db_session, runner):
@@ -146,3 +147,22 @@ def test_create_project_with_jira_enqueues_run(client, db_session, runner):
     )
     assert resp.status_code == 201
     assert len(runner.scheduled) == 1
+
+
+def test_create_project_without_integration_does_not_enqueue(client, db_session, runner):
+    from app.models import PendingOAuth
+
+    user = _user(db_session, email="bob@municorn.com", sub="sub-bob")
+    pending = PendingOAuth(
+        user_id=user.id, provider="google", account_email="agent@municorn.com",
+        refresh_token="1//rt", scopes="openid email",
+    )
+    db_session.add(pending); db_session.commit(); db_session.refresh(pending)
+
+    resp = client.post(
+        "/projects",
+        headers=_auth(user.id),
+        json={"name": "Solo", "google_auth_session_id": pending.id},
+    )
+    assert resp.status_code == 201
+    assert runner.scheduled == []

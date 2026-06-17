@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # repo-root/.env locally; harmlessly absent inside the container (vars injected).
@@ -68,3 +69,12 @@ class Settings(BaseSettings):
     letsencrypt_email: str | None = None
     sm_env_secret: str | None = None
     sm_sa_key_secret: str | None = None
+
+    @field_validator("lightrag_api_key", mode="before")
+    @classmethod
+    def _blank_to_none(cls, v: object) -> object:
+        """`LIGHTRAG_API_KEY=` (present but empty in .env) reads as "" via env_file;
+        treat it as unset so downstream `is None` checks match an absent var."""
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v

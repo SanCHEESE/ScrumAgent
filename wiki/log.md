@@ -10,6 +10,29 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-17 — Code-review fixes on LightRAG local stack (ScrumAgent-89a)
+
+Follow-up to `qjh` after a code review of the day's commits. Startup coupling was
+too tight: `backend` (and via it `frontend`) hard-gated on `lightrag`
+`service_healthy`, even though RAG isn't wired into the backend yet
+([[modules/rag]], ScrumAgent-o39). A LightRAG/Postgres failure — or a VM reboot
+with a flaky RAG — would block the whole app (auth, projects, chat) from
+starting. Changed `backend → lightrag` and `frontend → backend` to
+`service_started` (ordering only); `lightrag → postgres` stays `service_healthy`
+because LightRAG genuinely needs the DB. Added `start_period: 15s` to the backend
+healthcheck, and normalized a blank `LIGHTRAG_API_KEY=` to `None` in `Settings`
+(field validator, TDD red→green) so downstream `is None` checks match an absent
+var. The top-of-file compose comment was corrected: this is not a verbatim GCP
+lift-and-shift (the local `postgres` would run redundantly next to Cloud SQL).
+
+Follow-ups filed: GCP compose override to drop local postgres (ScrumAgent-ebp);
+deeper LightRAG readiness probe, since `/health` doesn't exercise the OpenAI or
+PG write paths (ScrumAgent-8w4).
+
+Verification: new config test red→green; full backend pytest green (171);
+`docker-compose config --quiet` green; resolved compose confirms `service_started`
+on backend/frontend and `start_period` applied.
+
 ## 2026-06-17 — LightRAG local ops foundation (ScrumAgent-qjh)
 
 Local Compose now includes the infrastructure foundation for the LightRAG

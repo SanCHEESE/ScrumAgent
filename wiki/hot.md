@@ -1,7 +1,7 @@
 ---
 type: meta
 title: "Hot Cache"
-updated: 2026-06-17T08:09:12+04:00
+updated: 2026-06-17T08:58:14+04:00
 tags: [meta, hot-cache]
 ---
 
@@ -13,10 +13,11 @@ Compose now has `postgres`, `lightrag`, `backend`, and `frontend`. `lightrag` is
 pinned to `ghcr.io/hkuds/lightrag:v1.5.3` on `:9621`; `postgres` uses
 `gzdaniel/postgres-for-rag:pg18-age-pgvector` with a Postgres 18-compatible
 `./data/postgres:/var/lib/postgresql` mount and explicit `platform: linux/amd64`
-for Apple Silicon Docker Desktop. Backend waits on healthy LightRAG; frontend
-waits on healthy backend. Smoke verified all three infra/backend containers
-healthy, backend `/health`, and backend-to-LightRAG `/health` over the Compose
-network.
+for Apple Silicon Docker Desktop. Only `lightrag` health-gates on `postgres`
+(it needs the DB); `backend` and `frontend` use `service_started` ordering so a
+RAG/DB problem can't block the whole app from starting (review fix `89a`). Smoke
+verified all three infra/backend containers healthy, backend `/health`, and
+backend-to-LightRAG `/health` over the Compose network.
 
 ## Key Recent Facts
 - Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker
@@ -41,8 +42,13 @@ network.
   `docker-compose config --quiet`; frontend `npm --prefix apps/web run typecheck`.
 
 ## What just shipped (same day, newest first)
-- **LightRAG local ops foundation** (`qjh`): Compose services, health-gated
-  startup, env template, backend config settings, Cloud SQL docs. Verification:
+- **Review fixes on `qjh`** (`89a`): decoupled `backend`/`frontend` startup from
+  RAG health (`service_started`, not `service_healthy`) so a LightRAG/Postgres
+  problem no longer blocks the whole app; added `start_period` to the backend
+  healthcheck; normalized blank `LIGHTRAG_API_KEY` to `None` (TDD). Follow-ups:
+  GCP postgres override (`ebp`), deeper LightRAG readiness probe (`8w4`).
+- **LightRAG local ops foundation** (`qjh`): Compose services, startup ordering,
+  env template, backend config settings, Cloud SQL docs. Verification:
   backend pytest green, Compose config green, smoke stack healthy, backend
   reached LightRAG health and LightRAG reported PG storage adapters.
 - **Suggested members / Settings → Members** (`idt`): full-stack member

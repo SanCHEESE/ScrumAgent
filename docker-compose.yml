@@ -1,5 +1,10 @@
-# Kabanchik local stack. Canonical dev path (GCP deploy lifts-and-shifts this).
+# Kabanchik local stack — canonical local dev path.
 #   docker compose up --build   →  backend :8000, frontend :3000, LightRAG :9621
+#
+# NOT a verbatim GCP lift-and-shift: on GCP the `postgres` service below is
+# dropped and LIGHTRAG_POSTGRES_* point at Cloud SQL via a deploy-time override
+# (ScrumAgent-ebp). Running this file unchanged on GCP would start a redundant
+# Postgres next to Cloud SQL.
 #
 # Docker daemon: Docker Desktop on macOS. Full notes:
 #   wiki/domains/deployment.md → "Local Docker daemon".
@@ -91,13 +96,17 @@ services:
       - ./data/rag:/app/data/rag
       - ./data/keys:/app/data/keys
     depends_on:
+      # Ordering only — start after lightrag, but don't gate the backend (auth,
+      # projects, chat) on RAG health: RAG isn't wired into the backend yet
+      # (ScrumAgent-o39). Revisit graceful readiness gating when app/rag.py lands.
       lightrag:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()\""]
       interval: 10s
       timeout: 5s
       retries: 12
+      start_period: 15s
     restart: unless-stopped
 
   # Dev-mode Next.js. A production multi-stage frontend image is a follow-up
@@ -120,6 +129,9 @@ services:
       - ./apps/web:/app
       - /app/node_modules
     depends_on:
+      # Ordering only — `npm install` is independent of the backend, so don't
+      # serialize it behind backend health; the dev server proxies at runtime
+      # (browser-side), by when the backend is up.
       backend:
-        condition: service_healthy
+        condition: service_started
     restart: unless-stopped

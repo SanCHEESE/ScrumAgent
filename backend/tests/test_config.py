@@ -47,3 +47,12 @@ def test_optional_integrations_default_to_none(monkeypatch):
     assert settings.rovo_api_token is None
     assert settings.notion_token is None
     assert settings.lightrag_api_key is None
+
+
+def test_blank_lightrag_api_key_normalized_to_none(monkeypatch):
+    """`LIGHTRAG_API_KEY=` (present but empty) in .env/env must read as None, not
+    "", so downstream `is None` checks behave the same as the var being absent."""
+    _set_required(monkeypatch)
+    monkeypatch.setenv("LIGHTRAG_API_KEY", "")
+    settings = Settings(_env_file=None)
+    assert settings.lightrag_api_key is None

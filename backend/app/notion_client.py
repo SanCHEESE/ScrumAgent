@@ -99,15 +99,23 @@ class NotionReadClient:
             body = resp.json()
             for block in body.get("results", []) or []:
                 btype = block.get("type")
+                block_id = block.get("id")
                 if btype == "child_page":
-                    child_pages.append((block["id"], block.get("child_page", {}).get("title", "")))
+                    if block_id:
+                        child_pages.append(
+                            (block_id, block.get("child_page", {}).get("title", ""))
+                        )
                     continue
                 if btype in _TEXT_BLOCKS:
                     text = _rich_text(block.get(btype))
                     if text:
                         lines.append(text)
-                if block.get("has_children") and btype not in {"child_page", "child_database"}:
-                    sub_text, sub_children = await self._collect(client, block["id"])
+                if (
+                    block_id
+                    and block.get("has_children")
+                    and btype not in {"child_page", "child_database"}
+                ):
+                    sub_text, sub_children = await self._collect(client, block_id)
                     if sub_text:
                         lines.append(sub_text)
                     child_pages.extend(sub_children)

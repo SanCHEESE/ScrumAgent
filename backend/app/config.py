@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     notion_mcp_url: str = "https://mcp.notion.com/v1/sse"
     notion_token: str | None = None
 
+    # --- Backlog ingestion ---
+    jira_page_size: int = 100
+    notion_max_depth: int = 5
+
     # --- GCP deploy (optional) ---
     gcp_project_id: str | None = None
     gcp_region: str | None = None

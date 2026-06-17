@@ -96,3 +96,16 @@ class ResponseStyle(str, enum.Enum):
     concise = "concise"
     balanced = "balanced"
     detailed = "detailed"
+
+
+class IngestionStatus(str, enum.Enum):
+    pending = "pending"
+    running = "running"
+    completed = "completed"
+    partial = "partial"
+    failed = "failed"
+
+
+class IngestionTrigger(str, enum.Enum):
+    created = "created"
+    resync = "resync"

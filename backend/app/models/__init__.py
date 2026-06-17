@@ -14,6 +14,7 @@ from app.models.project import (
     ProjectCredential,
     ProjectMember,
 )
+from app.models.ingestion import IngestionRun
 
 __all__ = [
     "User",
@@ -32,4 +33,5 @@ __all__ = [
     "PendingProjectMember",
     "ProjectCredential",
     "PendingOAuth",
+    "IngestionRun",
 ]

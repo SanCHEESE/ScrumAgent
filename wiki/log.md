@@ -10,6 +10,45 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-17 — Jira/Notion backlog ingestion into LightRAG (ScrumAgent-lcw)
+
+Shipped the first RAG write path: when a project is created with Jira and/or Notion
+credentials, the existing backlog is fetched and indexed into LightRAG as a
+non-blocking background job. Chat and agents therefore have backlog context from day
+one. Manual re-sync is available via admin endpoint.
+
+**Components shipped** (all in `backend/`):
+
+- `app/rag.py` — `RagClient` adapter: `index_documents(project_id, docs)` (batch
+  `POST /documents/texts`), `clear_project` (delete-by-`file_source` prefix),
+  `status` (project-scoped doc counts). Project isolation is encoded as
+  `file_source = "{project_id}::{source_kind}::{source_id}"` because LightRAG
+  v1.5.3 has no per-doc metadata, caller-id, or upsert (API spike `ScrumAgent-m3c`);
+  re-sync = clear-then-reinsert. The knowledge graph itself is shared
+  (`ScrumAgent-o39`).
+- `app/jira_client.py` / `app/notion_client.py` — read-only clients:
+  `JiraReadClient.fetch_issues` (paginated ADF→text) and
+  `NotionReadClient.fetch_pages` (recursive depth-bounded block walk). Both produce
+  `app/sources.py::SourceDocument`. Read-only ahead of the planned Rovo (`qor`) /
+  Notion MCP (`ilz`) write slices.
+- `app/ingestion.py` — `IngestionRun` model (status `pending/running/completed/
+  partial/failed`, trigger `created/resync`), `execute_run` (per-source error
+  isolation), `run_ingestion` (own DB session), `IngestionRunner` (GC-safe
+  `asyncio.create_task` background seam).
+- `app/routers/projects.py` — create-time trigger (non-blocking; `POST /projects`
+  latency unchanged), `GET /projects/{id}/knowledge-base/status` (members),
+  `POST /projects/{id}/knowledge-base/resync` (admin-only via `require_project_admin`).
+
+**Scope:** text only. Deferred: images/attachments, auto-sync, chat-side retrieval
+(`ScrumAgent-n6h`).
+
+**Verification:** 192 backend tests passing. Design spec:
+`docs/superpowers/specs/2026-06-17-jira-notion-backlog-ingestion-design.md`.
+
+**Wiki:** updated [[modules/rag]] (write-path status, `file_source` scheme, shared-
+graph limitation); created [[flows/backlog-ingestion]]; linked from
+[[flows/_index]] and [[index]].
+
 ## 2026-06-17 — Code-review fixes on LightRAG local stack (ScrumAgent-89a)
 
 Follow-up to `qjh` after a code review of the day's commits. Startup coupling was

@@ -74,6 +74,7 @@ See [[modules/_index]] for full list. Highlights:
 
 - [[flows/meeting-processing]]
 - [[flows/chat]]
+- [[flows/backlog-ingestion]]
 - [[flows/oauth-login]]
 - [[flows/gcp-deployment-topology]]
 

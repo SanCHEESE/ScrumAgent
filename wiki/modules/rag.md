@@ -3,7 +3,7 @@ type: module
 title: "RAG"
 path: "backend/app/rag.py"
 language: python
-status: planned
+status: partial
 created: 2026-05-10
 updated: 2026-06-17
 depends_on: [llm-gateway]
@@ -20,6 +20,7 @@ this module, never LightRAG directly.
 
 - Index transcripts, summaries, decisions, action items, and later multimodal
   meeting artifacts such as screen captures or linked documents.
+- Index backlog documents fetched from Jira and Notion at project creation.
 - Retrieve with normalized **citations** (source provenance).
 - Enforce project-scoped filters for user-facing chat retrieval.
 - Translate LightRAG responses into stable app-owned result shapes.
@@ -46,16 +47,35 @@ LightRAG storage settings (`PGKVStorage`, `PGVectorStorage`, `PGGraphStorage`,
 `PGDocStatusStorage`, and `POSTGRES_*`) are container-side deployment config, not
 agent/backend module config.
 
-## API surface (small on purpose)
+## API surface
 
-- `index_meeting(...)` — feed normalized, project-scoped meeting artifacts into
-  the store.
+### Implemented (write side — ScrumAgent-lcw)
+
+- `index_documents(project_id, docs)` — batch `POST /documents/texts` to LightRAG,
+  used by the backlog ingestion pipeline.
+- `clear_project(project_id)` — delete all documents whose `file_source` starts
+  with `"{project_id}::"` before a re-sync; LightRAG v1.5.3 has no per-doc metadata
+  or upsert, so delete-then-reinsert is the only safe re-sync path.
+- `status(project_id)` — project-scoped document counts; backs the
+  `GET /projects/{id}/knowledge-base/status` endpoint.
+
+**Project scoping:** LightRAG v1.5.3 has a single shared instance and workspace, so
+project isolation is encoded in the `file_source` field:
+`"{project_id}::{source_kind}::{source_id}"`. This is a reference-level tag, not a
+graph-level boundary — the knowledge graph itself is shared across projects (known
+limitation, tracked as `ScrumAgent-o39`).
+
+### Planned
+
+- `index_meeting(...)` — feed normalized meeting artifacts (transcripts, summaries,
+  decisions, action items) into the store. Tracked: `ScrumAgent-o39`.
 - `retrieve(query, ...)` — return passages with citation metadata and scores.
-- `status(project_id)` — support the Settings Knowledge base tab once the live UI
-  is wired.
+  Tracked: `ScrumAgent-n6h`.
 
 ## Used by
 
-- `meeting_participation` — indexes after analysis.
-- `user_chat` — retrieves before answering.
-- `/settings -> Knowledge base` — previews index health and retrieval quality.
+- `ingestion` — indexes Jira/Notion backlog documents on project creation and resync
+  (see [[flows/backlog-ingestion]]).
+- `meeting_participation` — will index after analysis (planned).
+- `user_chat` — will retrieve before answering (planned).
+- `/settings -> Knowledge base` — project-scoped doc counts via `status()`.

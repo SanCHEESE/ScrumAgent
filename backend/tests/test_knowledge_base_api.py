@@ -85,6 +85,46 @@ def test_resync_admin_creates_run_and_schedules(client, db_session, runner):
     assert runner.scheduled == [runs[0].id]
 
 
+class _LoopRequiringRunner:
+    """Mimics the real IngestionRunner: schedule() calls asyncio.create_task,
+    which raises 'no running event loop' if the endpoint isn't run on the loop.
+
+    The plain FakeRunner doesn't create_task, so it can't catch a sync endpoint
+    being run in a threadpool (ScrumAgent-54k)."""
+
+    def __init__(self) -> None:
+        self.scheduled: list[str] = []
+        self._tasks: list = []
+
+    def schedule(self, run_id: str) -> None:
+        import asyncio
+
+        self._tasks.append(asyncio.create_task(asyncio.sleep(0)))
+        self.scheduled.append(run_id)
+
+
+def test_resync_runs_on_event_loop_so_scheduling_succeeds(db_session):
+    user = _user(db_session)
+    project = _project(db_session, user, role=ProjectRole.admin)
+    loop_runner = _LoopRequiringRunner()
+
+    def _ov_db():
+        yield db_session
+
+    app.dependency_overrides[deps.get_settings] = _settings
+    app.dependency_overrides[deps.get_db] = _ov_db
+    app.dependency_overrides[deps.get_ingestion_runner] = lambda: loop_runner
+    try:
+        c = TestClient(app, follow_redirects=False)
+        resp = c.post(
+            f"/projects/{project.id}/knowledge-base/resync", headers=_auth(user.id)
+        )
+        assert resp.status_code == 202
+        assert loop_runner.scheduled == [resp.json()["id"]]
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_resync_non_admin_forbidden(client, db_session):
     user = _user(db_session)
     project = _project(db_session, user, role=ProjectRole.member)

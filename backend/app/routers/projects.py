@@ -1293,11 +1293,14 @@ def set_knowledge_base_auto_sync(
     status_code=status.HTTP_202_ACCEPTED,
     response_model=IngestionRunOut,
 )
-def resync_knowledge_base(
+async def resync_knowledge_base(
     project: Project = Depends(require_project_admin),
     db: Session = Depends(get_db),
     runner: IngestionRunner = Depends(get_ingestion_runner),
 ) -> IngestionRunOut:
+    # async so it runs on the event loop — IngestionRunner.schedule() calls
+    # asyncio.create_task, which needs a running loop (ScrumAgent-54k). A sync
+    # def would run in a threadpool and raise "no running event loop".
     if not (project.jira_project_key or project.notion_page_id):
         raise HTTPException(
             status.HTTP_409_CONFLICT, "No Jira/Notion integration to sync"

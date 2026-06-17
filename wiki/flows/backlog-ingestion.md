@@ -37,9 +37,10 @@ START (project created OR resync requested OR auto-sync due)
    present). Each source is fetched independently; a single-source failure sets
    the run to `partial` rather than `failed`, preserving results from successful
    sources.
-4. **`JiraReadClient.fetch_issues`** paginates `/rest/api/3/search` and converts
-   Atlassian Document Format (ADF) fields to plain text, producing
-   `SourceDocument` records.
+4. **`JiraReadClient.fetch_issues`** paginates `POST /rest/api/3/search/jql`
+   (the legacy `GET /rest/api/3/search` was removed by Atlassian — 410 Gone;
+   `ScrumAgent-2vi`) using `nextPageToken`, and converts Atlassian Document
+   Format (ADF) fields to plain text, producing `SourceDocument` records.
 5. **`NotionReadClient.fetch_pages`** does a recursive block/page walk (depth-
    bounded), producing `SourceDocument` records.
 6. Both readers share the `app/sources.py::SourceDocument` shape (text, metadata,

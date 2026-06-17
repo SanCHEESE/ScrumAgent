@@ -54,30 +54,38 @@ class JiraReadClient:
         )
 
     async def fetch_issues(self, project_key: str) -> list[SourceDocument]:
+        # Jira Cloud removed GET /rest/api/3/search (410 Gone, May 2025). The
+        # replacement is the enhanced search POST /rest/api/3/search/jql, which
+        # pages by an opaque nextPageToken instead of startAt/total
+        # (ScrumAgent-2vi).
         jql = f'project = "{project_key}" ORDER BY created ASC'
         out: list[SourceDocument] = []
-        start_at = 0
+        next_token: str | None = None
         async with self._client_factory() as client:
             while True:
-                resp = await client.get(
-                    f"{self._site}/rest/api/3/search",
+                payload: dict = {
+                    "jql": jql,
+                    "maxResults": self._page_size,
+                    "fields": self.FIELDS,
+                }
+                if next_token:
+                    payload["nextPageToken"] = next_token
+                resp = await client.post(
+                    f"{self._site}/rest/api/3/search/jql",
                     auth=self._auth,
-                    headers={"Accept": "application/json"},
-                    params={
-                        "jql": jql,
-                        "startAt": start_at,
-                        "maxResults": self._page_size,
-                        "fields": ",".join(self.FIELDS),
+                    headers={
+                        "Accept": "application/json",
+                        "Content-Type": "application/json",
                     },
+                    json=payload,
                 )
                 resp.raise_for_status()
                 body = resp.json()
                 issues = body.get("issues", []) or []
                 for issue in issues:
                     out.append(self._to_doc(issue))
-                total = body.get("total") or 0
-                start_at += len(issues)
-                if not issues or start_at >= total:
+                next_token = body.get("nextPageToken")
+                if not next_token or not issues:
                     break
         return out
 

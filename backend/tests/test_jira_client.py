@@ -28,25 +28,38 @@ def test_adf_to_text_flattens_paragraphs_and_lists():
     assert "one" in out and "two" in out
 
 
+def _issue(n: int) -> dict:
+    return {
+        "key": f"PLAT-{n}",
+        "fields": {
+            "summary": f"Issue {n}",
+            "description": {"type": "doc", "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": "Body"}]}]},
+            "comment": {"comments": [
+                {"body": {"type": "doc", "content": [
+                    {"type": "paragraph", "content": [{"type": "text", "text": "A comment"}]}]}}]},
+            "status": {"name": "Open"},
+            "issuetype": {"name": "Bug"},
+            "updated": "2026-06-01T10:00:00.000+0000",
+        },
+    }
+
+
 def _two_page_handler() -> "callable":
+    """Jira Cloud enhanced search: POST /rest/api/3/search/jql, nextPageToken paging."""
+    import json
+
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/rest/api/3/search"
-        start = int(request.url.params.get("startAt", "0"))
-        issue = {
-            "key": f"PLAT-{start + 1}",
-            "fields": {
-                "summary": f"Issue {start + 1}",
-                "description": {"type": "doc", "content": [
-                    {"type": "paragraph", "content": [{"type": "text", "text": "Body"}]}]},
-                "comment": {"comments": [
-                    {"body": {"type": "doc", "content": [
-                        {"type": "paragraph", "content": [{"type": "text", "text": "A comment"}]}]}}]},
-                "status": {"name": "Open"},
-                "issuetype": {"name": "Bug"},
-                "updated": "2026-06-01T10:00:00.000+0000",
-            },
-        }
-        return httpx.Response(200, json={"startAt": start, "maxResults": 1, "total": 2, "issues": [issue]})
+        assert request.url.path == "/rest/api/3/search/jql"
+        assert request.method == "POST"
+        body = json.loads(request.content)
+        assert 'project = "PLAT"' in body["jql"]
+        assert isinstance(body["fields"], list)  # array in body, not a comma string
+        token = body.get("nextPageToken")
+        if token is None:  # first page
+            return httpx.Response(200, json={"issues": [_issue(1)], "nextPageToken": "p2"})
+        assert token == "p2"  # second page driven by the returned token
+        return httpx.Response(200, json={"issues": [_issue(2)], "isLast": True})
 
     return handler
 

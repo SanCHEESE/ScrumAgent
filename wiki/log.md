@@ -10,6 +10,43 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-17 — Full-stack RAG indexing verification (live, ScrumAgent-bah)
+
+Brought up the full Docker stack (postgres + lightrag + backend + frontend, all
+healthy) and exercised auto-sync end-to-end against the real **eSIM** project
+(Jira project `ESIM` on municorn.atlassian.net), seeded from `backend/.local/dev.db`
+into the compose DB, in `agent_preview` mode.
+
+**Proven working live:** auto-sync scheduler fires on startup → `IngestionRun(trigger=auto)`
+→ Jira fetch → submit to LightRAG (308 real issues) → KB status reflects
+`by_source_kind={jira:308}`. The whole adapter/scheduler/endpoint path is sound.
+
+**Bugs found live + fixed (TDD, 211 backend tests green):**
+- `ScrumAgent-2vi` — `JiraReadClient` called the removed `GET /rest/api/3/search`
+  (410 Gone; Atlassian removed it May 2025). Migrated to `POST /rest/api/3/search/jql`
+  with `nextPageToken` paging. After fix: fetched 308 real ESIM issues.
+- `ScrumAgent-54k` — `resync_knowledge_base` was a sync `def`, so FastAPI ran it in
+  a threadpool and `IngestionRunner.schedule`'s `asyncio.create_task` raised
+  "no running event loop" (500). Made it `async` (matches `create_project`). The
+  unit test missed it because `get_ingestion_runner` was faked with a runner that
+  never calls `create_task`; added a loop-requiring-runner regression test.
+
+**Filed (not fixed):**
+- `ScrumAgent-srp` — re-sync/auto-sync of an already-indexed project races
+  LightRAG's single-flight pipeline: `clear_project` fires async DELETEs, returns
+  before they drain, then `index_documents` POST hits 409 Conflict. Affects every
+  re-sync with existing docs. Fix: poll `GET /documents/pipeline_status` until idle
+  between clear and insert, and/or retry on 409.
+
+**Environment blocker (not code):** LightRAG processing failed all 308 docs —
+the configured `OPENAI_API_KEY`'s project (`proj_bWsAjbNswWOhDqzZhpAGcAcX`) has no
+access to OpenAI embedding models (both `text-embedding-3-small` and
+`text-embedding-ada-002` → 403 `model_not_found`), though it can use the chat model.
+Real indexing needs a key whose project is granted an embedding model. Stack left
+running in `agent_preview` for inspection; `.env` got temporary
+`APP_ENVIRONMENT=agent_preview`, `NEXT_PUBLIC_APP_ENVIRONMENT=agent_preview`,
+`LIGHTRAG_EMBEDDING_MODEL=text-embedding-ada-002` (revert to restore production mode).
+
 ## 2026-06-17 — RAG auto-sync + real Knowledge base settings tab (ScrumAgent-bah)
 
 Extended the ingestion epic (`lcw`) with periodic auto-sync and made the mock

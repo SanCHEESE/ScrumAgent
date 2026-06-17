@@ -11,7 +11,7 @@ import logging
 from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
 
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.jira_client import JiraReadClient
@@ -164,10 +164,13 @@ class IngestionRunner:
     def __init__(self, settings: Settings, session_factory: Callable[[], Session]) -> None:
         self._settings = settings
         self._session_factory = session_factory
+        self._tasks: set[asyncio.Task] = set()
 
     def schedule(self, run_id: str) -> None:
-        asyncio.create_task(
+        task = asyncio.create_task(
             run_ingestion(
                 run_id, session_factory=self._session_factory, settings=self._settings
             )
         )
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)

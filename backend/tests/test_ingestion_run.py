@@ -4,7 +4,7 @@ import asyncio
 
 from app.database import init_db, make_engine
 from app.ingestion import execute_run
-from app.models import Project, ProjectCredential, ProjectMember
+from app.models import Project, ProjectCredential
 from app.models.ingestion import IngestionRun
 from app.models.types import IngestionStatus, IngestionTrigger, ProjectRole
 from app.models.user import User

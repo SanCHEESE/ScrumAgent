@@ -35,6 +35,10 @@ def test_defaults_applied_when_required_present(monkeypatch):
     settings = Settings(_env_file=None)
     assert settings.openai_model == "gpt-5.4-mini"
     assert settings.allowed_domain == "municorn.com"
+    assert settings.rag_provider == "lightrag"
+    assert settings.lightrag_base_url == "http://lightrag:9621"
+    assert settings.lightrag_workspace == "scrumagent"
+    assert settings.lightrag_timeout_seconds == 10.0
 
 
 def test_optional_integrations_default_to_none(monkeypatch):
@@ -42,3 +46,4 @@ def test_optional_integrations_default_to_none(monkeypatch):
     settings = Settings(_env_file=None)
     assert settings.rovo_api_token is None
     assert settings.notion_token is None
+    assert settings.lightrag_api_key is None

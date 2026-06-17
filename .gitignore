@@ -7,6 +7,10 @@
 .env.*
 !.env.example
 data/keys/
+data/db/
+data/rag/
+data/lightrag/
+data/postgres/
 
 # Node / Next.js
 node_modules/

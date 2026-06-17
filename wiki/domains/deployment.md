@@ -53,46 +53,34 @@ ship that value to GCP/shared real usage.
 
 ### Local requirements
 
-- Docker engine + Docker Compose v2 + Buildx (see "Local Docker daemon" below)
+- Docker Desktop on macOS, or Docker Engine on Linux/GCE, with Compose support
+  (`docker compose` or the standalone `docker-compose` CLI)
 - Google Workspace tenant with native Meet artifacts available *(slice 3 only)*
 - Service account with domain-wide delegation *(slice 3 only)*
 
-### Local Docker daemon (Colima — no Docker Desktop)
+### Local Docker daemon
 
 macOS has no native Docker daemon: containers need a Linux engine running in a small
-VM. **Docker Desktop is not required** — the supported daemon is
-[Colima](https://github.com/abiosoft/colima) (a thin manager over a Lima VM). The
-`docker` CLI and the `compose`/`buildx` plugins are installed from Homebrew, fully
-independent of Docker Desktop.
-
-One-time setup (Apple Silicon):
+VM. The current supported local daemon is **Docker Desktop**. Start it with:
 
 ```bash
-# CLI + plugins + daemon. Homebrew's bin precedes any Docker.app symlinks in PATH,
-# so `docker` resolves to the brew client even with Desktop still installed.
-brew install colima docker docker-compose docker-buildx
-mkdir -p ~/.docker/cli-plugins
-ln -sfn /opt/homebrew/lib/docker/cli-plugins/docker-compose ~/.docker/cli-plugins/docker-compose
-ln -sfn /opt/homebrew/lib/docker/cli-plugins/docker-buildx  ~/.docker/cli-plugins/docker-buildx
-
-# Start the VM: Apple Virtualization.framework (vz) + fast virtiofs bind mounts.
-colima start --cpu 6 --memory 8 --disk 60 --vm-type vz --mount-type virtiofs
+open -a Docker
 ```
 
-`colima start` creates and switches to the `colima` docker context, so `docker` and
-`docker compose up --build` work unchanged. Verify with `docker context ls` (the
-`colima` row is active) and `colima status`.
+Verify the active context is Desktop:
+
+```bash
+docker context ls
+docker run --rm hello-world
+```
 
 Notes:
 
-- When dropping Docker Desktop, remove `"credsStore": "desktop"` from
-  `~/.docker/config.json`. Otherwise `docker` shells out to the Desktop credential
-  helper and even anonymous pulls of public images can fail once Desktop is gone.
-- Survive reboot: `brew services start colima` (reuses the saved cpu/mem/vz profile).
-  Disable Docker Desktop's "open at login" so it doesn't relaunch and grab ports.
-- Lifecycle: `colima start` / `colima stop`; `colima delete` wipes the VM.
-- The same `docker compose` stack runs on the GCE VM (Linux) unchanged — Colima is a
-  macOS-host concern only.
+- Some local shells may expose the standalone `docker-compose` binary instead of
+  the Compose plugin. Use `docker-compose up --build` in those shells; the stack
+  file is the same.
+- The same Compose stack runs on the GCE VM unchanged; Docker Desktop is a
+  developer-machine concern only.
 
 ---
 
@@ -149,6 +137,30 @@ SM_ENV_SECRET=projects/${GCP_PROJECT_ID}/secrets/scrumagent-env
 SM_SA_KEY_SECRET=projects/${GCP_PROJECT_ID}/secrets/scrumagent-sa-key
 ```
 
+### LightRAG storage on Cloud SQL
+
+The local Compose stack uses a `postgres` service for LightRAG storage parity. On
+GCP, keep the same LightRAG container and storage adapter names, but point the
+container's PostgreSQL settings at Cloud SQL PostgreSQL:
+
+```bash
+RAG_PROVIDER=lightrag
+LIGHTRAG_BASE_URL=http://lightrag:9621
+LIGHTRAG_WORKSPACE=scrumagent
+
+LIGHTRAG_POSTGRES_HOST=<cloud-sql-private-ip-or-auth-proxy-host>
+LIGHTRAG_POSTGRES_PORT=5432
+LIGHTRAG_POSTGRES_USER=<cloud-sql-user>
+LIGHTRAG_POSTGRES_PASSWORD=<cloud-sql-password-from-secret-manager>
+LIGHTRAG_POSTGRES_DATABASE=lightrag
+LIGHTRAG_POSTGRES_SSL_MODE=require
+```
+
+The backend still reads only the app-facing `LIGHTRAG_*` adapter settings. Compose
+maps the `LIGHTRAG_POSTGRES_*` values into the LightRAG container's upstream
+`POSTGRES_*` environment variables. Agents and routers continue to call only
+[[modules/rag]].
+
 ### Updates / redeploys
 
 - Tag-based: `git pull && docker compose up -d --build`.
@@ -189,10 +201,24 @@ BACKEND_URL=http://localhost:8000
 FRONTEND_URL=http://localhost:3000
 
 # Storage
-DATABASE_URL=sqlite:////data/db/dev.db
+DATABASE_URL=sqlite:////app/data/db/scrumagent.db
 RAG_PROVIDER=lightrag
 LIGHTRAG_BASE_URL=http://lightrag:9621
 LIGHTRAG_WORKSPACE=scrumagent
+LIGHTRAG_TIMEOUT_SECONDS=10
+LIGHTRAG_API_KEY=
+LIGHTRAG_LLM_MODEL=gpt-5.4-mini
+LIGHTRAG_EMBEDDING_MODEL=text-embedding-3-small
+LIGHTRAG_EMBEDDING_DIM=1536
+LIGHTRAG_POSTGRES_HOST=postgres
+LIGHTRAG_POSTGRES_PORT=5432
+LIGHTRAG_POSTGRES_USER=rag
+LIGHTRAG_POSTGRES_PASSWORD=rag
+LIGHTRAG_POSTGRES_DATABASE=lightrag
+LIGHTRAG_POSTGRES_MAX_CONNECTIONS=25
+LIGHTRAG_POSTGRES_VECTOR_INDEX_TYPE=HNSW
+LIGHTRAG_POSTGRES_SSL_MODE=disable
+RAG_STORAGE_PATH=/app/data/rag
 
 # Atlassian Rovo (Jira)
 ROVO_BASE_URL=https://api.atlassian.com/rovo

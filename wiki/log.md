@@ -10,6 +10,34 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-17 — LightRAG local ops foundation (ScrumAgent-qjh)
+
+Local Compose now includes the infrastructure foundation for the LightRAG
+multimodal RAG slice: `postgres`, `lightrag`, `backend`, and `frontend`.
+`postgres` uses `gzdaniel/postgres-for-rag:pg18-age-pgvector` with the
+Postgres 18-compatible `/var/lib/postgresql` mount and is marked
+`platform: linux/amd64` for Apple Silicon Docker Desktop. `lightrag` is pinned to
+`ghcr.io/hkuds/lightrag:v1.5.3`, exposes `:9621`, and uses PostgreSQL-backed
+`PGKVStorage`, `PGDocStatusStorage`, `PGGraphStorage`, and `PGVectorStorage`.
+Startup ordering is health-gated: backend waits for healthy LightRAG, and the
+frontend waits for healthy backend.
+
+Backend settings gained only app-facing adapter config:
+`RAG_PROVIDER`, `LIGHTRAG_BASE_URL`, `LIGHTRAG_WORKSPACE`,
+`LIGHTRAG_TIMEOUT_SECONDS`, and optional `LIGHTRAG_API_KEY`; storage adapter and
+`POSTGRES_*` details remain container-side deployment config. `.env.example` now
+documents local and GCP LightRAG storage wiring. [[domains/deployment]],
+[[flows/gcp-deployment-topology]], and [[modules/rag]] were updated to make the
+local PostgreSQL vs Cloud SQL mapping explicit and to correct local Docker docs
+back to Docker Desktop.
+
+Verification: config TDD red/green for new backend settings; full backend
+pytest green; `docker-compose config --quiet` green; smoke-started
+`postgres`/`lightrag`/`backend` with all three healthy; backend `/health` returned
+`{"status":"ok"}`; backend reached `http://lightrag:9621/health` over the
+Compose network and LightRAG reported the PostgreSQL storage adapters and
+workspace `scrumagent`.
+
 ## 2026-06-17 — RAG target changed to LightRAG multimodal service
 
 The RAG architecture moved from the original RAG-Anything wording to a separate

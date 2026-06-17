@@ -32,6 +32,20 @@ LightRAG runs as a separate service container. The backend talks to it through
 storage adapters; the GCP deployment uses Cloud SQL PostgreSQL through the same
 adapter contract.
 
+## Configuration boundary
+
+Backend settings stay app-level:
+
+- `RAG_PROVIDER=lightrag`
+- `LIGHTRAG_BASE_URL=http://lightrag:9621`
+- `LIGHTRAG_WORKSPACE=scrumagent`
+- `LIGHTRAG_TIMEOUT_SECONDS=10`
+- optional `LIGHTRAG_API_KEY`
+
+LightRAG storage settings (`PGKVStorage`, `PGVectorStorage`, `PGGraphStorage`,
+`PGDocStatusStorage`, and `POSTGRES_*`) are container-side deployment config, not
+agent/backend module config.
+
 ## API surface (small on purpose)
 
 - `index_meeting(...)` — feed normalized, project-scoped meeting artifacts into

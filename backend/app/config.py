@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     frontend_base_url: str = "http://localhost:3000"
     database_url: str = "sqlite:////app/data/db/scrumagent.db"
     rag_storage_path: str = "/app/data/rag"
+    rag_provider: Literal["lightrag"] = "lightrag"
+    lightrag_base_url: str = "http://lightrag:9621"
+    lightrag_workspace: str = "scrumagent"
+    lightrag_timeout_seconds: float = 10.0
+    lightrag_api_key: str | None = None
     log_level: str = "INFO"
 
     # --- Google service account (deferred: needs Workspace admin) ---

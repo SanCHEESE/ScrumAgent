@@ -158,6 +158,13 @@ schema can still run on SQLite for tests, while LightRAG gets a local PostgreSQL
 service for storage parity. Cloud SQL provides its own backups/PITR; daily disk
 snapshots cover VM runtime state and keys.
 
+LightRAG keeps the same container-side storage classes in local and GCP:
+`PGKVStorage`, `PGVectorStorage`, `PGGraphStorage`, and `PGDocStatusStorage`.
+Local Compose maps `LIGHTRAG_POSTGRES_HOST=postgres`; GCP maps the same
+`LIGHTRAG_POSTGRES_*` settings to the Cloud SQL private IP or Cloud SQL Auth
+Proxy host. The backend reads only `LIGHTRAG_BASE_URL=http://lightrag:9621` and
+goes through [[modules/rag]].
+
 ## External integrations
 
 | From | To | Transport | Purpose |

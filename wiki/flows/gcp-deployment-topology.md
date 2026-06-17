@@ -2,7 +2,7 @@
 type: flow
 title: "GCP deployment topology"
 created: 2026-05-22
-updated: 2026-06-02
+updated: 2026-06-17
 tags: [flow, gcp, deployment, topology, diagram]
 status: developing
 related:
@@ -22,7 +22,12 @@ related:
 
 # GCP deployment topology
 
-Connectivity diagram for the Google Cloud target: a single Compute Engine VM running the same Docker Compose stack as local dev, fronted by Caddy, talking to OpenAI / Atlassian Rovo / Notion MCP / Google Workspace externally. See [[domains/deployment]] for the provisioning details and [[decisions/2026-05-18-gcp-compute-engine-deployment]] for why this shape.
+Connectivity diagram for the Google Cloud target: a single Compute Engine VM
+running the same Docker Compose app stack as local dev, fronted by Caddy, talking
+to OpenAI / Atlassian Rovo / Notion MCP / Google Workspace externally. RAG runs
+as a LightRAG service and uses Cloud SQL PostgreSQL in GCP. See
+[[domains/deployment]] for the provisioning details and
+[[decisions/2026-05-18-gcp-compute-engine-deployment]] for why this shape.
 
 ## Diagram
 
@@ -51,18 +56,20 @@ flowchart TB
             subgraph DC["Docker Compose"]
                 FE["frontend<br/>Next.js 14 — :3000"]
                 BE["backend<br/>FastAPI — :8000"]
+                LR["lightrag<br/>multimodal RAG"]
 
                 subgraph BEbox["Backend internals"]
                     Orch["DeepAgents Orchestrator"]
                     A1["meeting_participation"]
                     A2["user_chat"]
                     A3["jira_notion"]
-                    RAG[("RAG-Anything")]
+                    RAGAdapter["RAG adapter<br/>app/rag.py"]
                     DB[("Relational DB<br/>SQLite local · Cloud SQL prod")]
                 end
             end
 
-            SSD[("Persistent SSD 100 GB<br/>/opt/scrumagent/data/<br/>db/ · rag/ · keys/")]
+            SSD[("Persistent SSD 100 GB<br/>/opt/scrumagent/data/<br/>keys/ · runtime state")]
+            PG[("Cloud SQL PostgreSQL<br/>app state + LightRAG storage")]
         end
     end
 
@@ -82,10 +89,12 @@ flowchart TB
 
     %% Storage
     Orch <--> DB
-    A1 <--> RAG
-    A2 <--> RAG
-    DB -.persisted.-> SSD
-    RAG -.persisted.-> SSD
+    A1 <--> RAGAdapter
+    A2 <--> RAGAdapter
+    RAGAdapter <--> LR
+    DB <--> PG
+    LR <--> PG
+    SM -.boot writes keys/env.-> SSD
 
     %% External integrations
     A3 -->|REST| Rovo
@@ -111,8 +120,8 @@ flowchart TB
 
     class OpenAI,Rovo,NotionMCP,GoogleAuth,GCal,GMeet ext
     class DNS,IP,SM,Snap gcp
-    class Caddy,FE,BE,Orch,A1,A2,A3 svc
-    class DB,RAG,SSD store
+    class Caddy,FE,BE,LR,Orch,A1,A2,A3,RAGAdapter svc
+    class DB,PG,SSD store
 ```
 
 ## Edge plane
@@ -126,21 +135,28 @@ Firewall rules expose only 80/443 to the internet; SSH (22) is reachable only th
 
 ## In-VM service plane
 
-`docker compose up` brings two containers:
+`docker compose up` brings the app containers:
 
 - **frontend** — Next.js 14 App Router, talks to backend over REST/WS, never reaches external APIs directly. Boundary enforced in [[domains/architecture]].
-- **backend** — single Python container with FastAPI router, the [[modules/runtime-orchestrator|DeepAgents orchestrator]], all three agents, [[modules/rag|RAG-Anything]], and embedded SQLite.
+- **backend** — Python container with FastAPI router, the [[modules/runtime-orchestrator|DeepAgents orchestrator]], all three agents, and app-owned adapters.
+- **lightrag** — multimodal RAG service reached only through [[modules/rag]].
 
 The three agents (`meeting_participation`, `user_chat`, `jira_notion`) never call each other directly — handoffs go through the orchestrator. See [[decisions/2026-03-27-three-agents-only]] and [[concepts/deepagents-runtime]].
 
 ## State plane
 
-The persistent SSD (100 GB) is mounted at `/opt/scrumagent/data/` and holds the non-relational state on the VM:
+The persistent SSD (100 GB) is mounted at `/opt/scrumagent/data/` and holds VM
+runtime state plus `keys/sa_key.json`, written from Secret Manager at boot and
+never committed.
 
-- `rag/` — RAG-Anything vector index + raw chunks ([[modules/rag]]).
-- `keys/sa_key.json` — Google service account key for domain-wide delegation; written from Secret Manager at boot, never committed.
-
-**Relational state lives in a managed Cloud SQL for PostgreSQL instance in prod** (users, conversations/messages, meetings/artifacts, updates, trace runs/steps, integrations) — see [[decisions/2026-06-01-cloud-sql-postgres-prod-db]]. Locally the same schema runs on a SQLite file under `db/`. The ORM is dialect-portable; the engine is chosen by `DATABASE_URL`. Cloud SQL provides its own backups/PITR; daily disk snapshots cover the RAG/keys SSD. (The detailed provisioning page [[domains/deployment]] still describes SQLite-on-SSD and is pending update.)
+**Relational app state lives in a managed Cloud SQL for PostgreSQL instance in
+prod** (users, conversations/messages, meetings/artifacts, updates, trace
+runs/steps, integrations) — see
+[[decisions/2026-06-01-cloud-sql-postgres-prod-db]]. LightRAG also uses
+PostgreSQL-backed storage adapters in GCP, pointed at Cloud SQL. Locally the app
+schema can still run on SQLite for tests, while LightRAG gets a local PostgreSQL
+service for storage parity. Cloud SQL provides its own backups/PITR; daily disk
+snapshots cover VM runtime state and keys.
 
 ## External integrations
 

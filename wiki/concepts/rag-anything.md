@@ -1,25 +1,31 @@
 ---
 type: concept
 title: "RAG-Anything"
-status: developing
+status: superseded
 created: 2026-05-10
-updated: 2026-05-10
+updated: 2026-06-17
 tags: [concept, rag]
 ---
 
 # RAG-Anything
 
-Retrieval-augmented generation library used as the knowledge store. Owned by [[modules/rag]].
+Original retrieval-augmented generation library named in the MVP concept. It is
+now superseded in the project design by [[concepts/lightrag-multimodal]] because
+the upstream multimodal path has moved into LightRAG.
+
+Historical references to RAG-Anything in the original source documents should be
+read as "the RAG engine"; the active implementation target is LightRAG behind the
+app-owned [[modules/rag]] adapter.
 
 ## Role in the system
 
-- Single shared store for the team (MVP scope).
-- Indexes meeting transcripts, summaries, decisions, action items.
-- Returns passages with **citations** so chat answers carry source provenance.
+- Historical pointer for the original MVP wording.
+- The current runtime role is documented in [[concepts/lightrag-multimodal]].
 
 ## Storage
 
-Local filesystem under `RAG_STORAGE_PATH` (`/data/rag`).
+No longer the active storage design. LightRAG uses PostgreSQL-backed storage
+adapters locally and Cloud SQL PostgreSQL on GCP.
 
 ## Related
 

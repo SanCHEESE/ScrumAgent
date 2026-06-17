@@ -4,7 +4,7 @@ title: "Production DB: Cloud SQL for PostgreSQL (SQLite local-only)"
 status: accepted
 date: 2026-06-01
 created: 2026-06-01
-updated: 2026-06-02
+updated: 2026-06-17
 tags: [decision, database, gcp, cloud-sql, postgres, sqlite]
 related:
   - "[[decisions/2026-05-18-gcp-compute-engine-deployment]]"
@@ -18,7 +18,11 @@ related:
 
 The **production** persistence store on GCP is **Cloud SQL for PostgreSQL** (a managed instance), not the embedded SQLite file. **Local dev and the test suite continue to use SQLite.** The ORM layer is written dialect-portable so the same models run on both — the engine is selected solely by `settings.database_url` (`postgresql+psycopg://…` in prod, `sqlite://…` locally).
 
-This refines the data-layer half of [[decisions/2026-05-18-gcp-compute-engine-deployment]]: the VM + Docker Compose + persistent-SSD topology still stands, and **RAG-Anything storage stays on the disk**, but relational state moves to Cloud SQL.
+This refines the data-layer half of [[decisions/2026-05-18-gcp-compute-engine-deployment]]:
+the VM + Docker Compose + persistent-SSD topology still stands, but relational
+state moves to Cloud SQL. A later RAG refinement (2026-06-17) also moves the
+active RAG target to LightRAG with PostgreSQL-backed storage adapters, so RAG
+storage should point at local PostgreSQL in local Compose and Cloud SQL in GCP.
 
 ## Context
 

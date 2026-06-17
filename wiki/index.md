@@ -2,7 +2,7 @@
 type: meta
 title: "Wiki Index"
 created: 2026-05-10
-updated: 2026-05-22
+updated: 2026-06-17
 tags: [meta, index]
 ---
 
@@ -52,6 +52,7 @@ See [[modules/_index]] for full list. Highlights:
 ## Concepts
 
 - [[concepts/deepagents-runtime]]
+- [[concepts/lightrag-multimodal]]
 - [[concepts/rag-anything]]
 - [[concepts/mcp]]
 - [[concepts/human-in-the-loop]]

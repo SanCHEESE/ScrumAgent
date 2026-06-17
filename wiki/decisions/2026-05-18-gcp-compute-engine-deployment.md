@@ -4,7 +4,7 @@ title: "GCP deployment target: single Compute Engine VM"
 status: accepted
 date: 2026-05-18
 created: 2026-05-18
-updated: 2026-05-18
+updated: 2026-06-17
 tags: [decision, deployment, gcp, compute-engine]
 ---
 
@@ -12,20 +12,28 @@ tags: [decision, deployment, gcp, compute-engine]
 
 ## Decision
 
-The cloud deployment target is **one Google Compute Engine VM** running the existing `docker compose up` stack on a persistent disk. Local Docker Compose remains the canonical dev path; GCP is an additional deployment target, not a re-architecture.
+The cloud deployment target is **one Google Compute Engine VM** running the app
+Docker Compose stack. Local Docker Compose remains the canonical dev path; GCP is
+an additional deployment target, not a re-architecture.
 
-No code change to the backend or frontend is required for the GCP path. SQLite, RAG-Anything storage, and the Google service-account JSON key all live on the VM's persistent disk under `/opt/scrumagent/data/`.
+This decision was refined by later storage decisions: production relational state
+uses Cloud SQL PostgreSQL, and RAG uses a separate LightRAG service with
+PostgreSQL-backed storage adapters. The Google service-account JSON key and VM
+runtime state live on the VM's persistent disk under `/opt/scrumagent/data/`.
 
 ## Context
 
-- The MVP was scoped local-first ([[decisions/2026-03-27-single-backend-container]]). Both data layers (SQLite + RAG-Anything) assume a writable POSIX filesystem.
-- Cloud Run would force migrations: Postgres for state, GCS for RAG storage, plus stateless restructuring. That's a separate, larger project.
+- The MVP was scoped local-first ([[decisions/2026-03-27-single-backend-container]]).
+- Cloud Run would force a broader stateless restructuring. That's a separate,
+  larger project.
 - We want a deployable target **now**, not after a rewrite. A VM lifts-and-shifts the Compose stack with one persistent disk.
 
 ## Shape
 
 - **1 VM** (`e2-standard-2` or `n2-standard-2`) with Container-Optimized OS or Debian.
-- **1 persistent SSD** (100 GB) mounted at `/opt/scrumagent/data/` (`db/`, `rag/`, `keys/`).
+- **1 persistent SSD** (100 GB) mounted at `/opt/scrumagent/data/` (`keys/` and
+  runtime state).
+- **Cloud SQL PostgreSQL** for app state and LightRAG-backed RAG storage.
 - **Reserved static external IP** (or a Cloud Load Balancer if we want managed TLS).
 - **Secret Manager** holds `.env` contents and the SA JSON key; injected to disk at boot.
 - **Cloud DNS** A record → static IP.
@@ -41,11 +49,12 @@ Terraform module under `deploy/gcp/` (planned, see beads). Bootstrap script clon
 
 - **+** Zero rewrite. Same containers, same data shapes, same DI.
 - **+** Operational story is simple: one VM, one disk, one snapshot.
-- **+** SQLite + filesystem RAG keep working.
+- **+** Same app containers and adapter contracts work locally and in GCP.
 - **−** Single point of failure. No autoscaling. No zero-downtime deploys (brief outage on `docker compose up -d --build`).
 - **−** Manual ops: SSH, restarts, snapshot management.
 - **−** Cost scales linearly with VM size; cannot scale to zero.
-- **−** Will need to revisit at phase-3 ([[domains/deployment]] rollout phases) — likely Cloud Run + Cloud SQL + GCS at that point.
+- **−** Will need to revisit at phase-3 ([[domains/deployment]] rollout phases)
+  if the system needs Cloud Run/autoscaling.
 
 ## Source
 

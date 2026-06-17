@@ -2,13 +2,16 @@
 type: domain
 title: "Backend"
 created: 2026-05-10
-updated: 2026-06-02
+updated: 2026-06-17
 tags: [domain, backend, python]
 ---
 
 # Backend
 
-Single Python container. FastAPI + DeepAgents runtime + 3 agents + SQLite + RAG + MCP, all in one process. Source: [[sources/tech-architecture]], [[sources/mvp-v2-plan]].
+FastAPI backend plus external runtime services. FastAPI hosts DeepAgents runtime,
+the 3 agents, project persistence, and app-owned adapters; LightRAG runs as a
+separate service for multimodal RAG. Source: [[sources/tech-architecture]],
+[[sources/mvp-v2-plan]].
 
 > [!key-insight] Status (2026-06-02): scaffold + **auth** (`ScrumAgent-u2b`, Google OAuth/JWT) + **persistence layer** (`ScrumAgent-67j`) + **project provisioning** (`ScrumAgent-lb9` — agent offline-OAuth, Jira/Notion validation, projects/users API; see [[modules/project-provisioning]]) done, 71 backend tests green. Done: `main.py` (lifespan bootstraps schema + crypto), `config.py`, `database.py`, `deps.py`, `oauth.py`, `security/` (JWT + Fernet), `models/` package, `repositories/chat.py`, `routers/auth.py`. The rest below is still `planned`. Dependencies are added **lazily per module** (lean `requirements.txt`), not all up front, so the image always builds from a clean checkout.
 
@@ -40,7 +43,7 @@ backend/
     ├── security/             # _jwt.py (JWT) + _state.py (OAuth state) + crypto.py (Fernet)
     ├── repositories/         # chat.py (conversation/message helpers)
     ├── llm.py                # planned
-    ├── rag.py                # planned
+    ├── rag.py                # planned LightRAG client adapter
     ├── calendar_sync.py      # planned
     ├── mcp_clients.py        # planned
     ├── trace_store.py        # planned
@@ -56,7 +59,7 @@ backend/
 ## Modules
 
 - [[modules/llm-gateway]] — `app/llm.py`
-- [[modules/rag]] — `app/rag.py`
+- [[modules/rag]] — `app/rag.py` (LightRAG service adapter)
 - [[modules/calendar-sync]] — `app/calendar_sync.py`
 - [[modules/mcp-clients]] — `app/mcp_clients.py`
 - [[modules/runtime-orchestrator]] — `app/runtime/`
@@ -80,4 +83,8 @@ backend/
 
 - Tests are mandatory before code (TDD) — see [[sources/mvp-v2-plan]] §1.
 - Issue tracking via `bd` (beads), not markdown TODOs.
-- `requirements.txt` includes `fastapi`, `uvicorn`, `sqlalchemy`, `langchain-openai`, DeepAgents runtime, MCP Python client, `langchain-mcp-adapters`, RAG-Anything, Google API clients, `python-jose`, `pytest`.
+- `requirements.txt` includes `fastapi`, `uvicorn`, `sqlalchemy`,
+  `langchain-openai`, DeepAgents runtime, MCP Python client,
+  `langchain-mcp-adapters`, Google API clients, `python-jose`, `pytest`.
+  LightRAG runs in its own container; backend code depends on the app adapter, not
+  LightRAG internals.

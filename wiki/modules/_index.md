@@ -2,7 +2,7 @@
 type: meta
 title: "Modules"
 created: 2026-05-10
-updated: 2026-06-02
+updated: 2026-06-17
 tags: [meta, index, module]
 ---
 
@@ -16,7 +16,7 @@ Backend code modules. Each page tracks purpose, path, status, dependencies.
 | [[project-provisioning]] | `backend/app/routers/projects.py` | active |
 | [[runtime-orchestrator]] | `backend/app/runtime/` | planned |
 | [[llm-gateway]] | `backend/app/llm.py` | planned |
-| [[rag]] | `backend/app/rag.py` | planned |
+| [[rag]] | `backend/app/rag.py` | planned LightRAG adapter |
 | [[calendar-sync]] | `backend/app/calendar_sync.py` | planned |
 | [[rovo-client]] | `backend/app/rovo_client.py` | planned |
 | [[mcp-clients]] | `backend/app/mcp_clients.py` | planned (Notion only) |

@@ -1,39 +1,34 @@
 ---
 type: meta
 title: "Hot Cache"
-updated: 2026-06-16T18:30:00+04:00
+updated: 2026-06-17T07:52:36+04:00
 tags: [meta, hot-cache]
 ---
 
 # Recent Context
 
 ## Last Updated
-2026-06-16. **Suggested members + batch-add + editable roles in Settings → Members
-(`ScrumAgent-idt`).** `/settings → Members` is now read-**write**, full-stack. A
-**Suggested members** section lists the project agent's meeting participants (live
-Google Calendar, via the existing `_participant_suggestions`, minus the agent/current
-members/existing invites); you multi-select and **Add selected (N)** as a batch
-(default role `member`), then edit roles in **Team members** (inline viewer/member/admin
-`<select>`s). People with **no account** are persisted as **email invitations**
-(`PendingProjectMember(project_id,email,role)` — a new table, *not* a nullable
-`ProjectMember.user_id`) and become real `ProjectMember`s on their **first Google login**
-via `grant_pending_memberships` (new `app/membership.py`, called in `auth.py`
-`google_callback` every login, idempotent, never downgrades). `ProjectOut` gained an
-additive `pending_members[]`. New endpoints (all under `require_project_access`):
-`GET /{id}/member-suggestions`, `POST /{id}/members` (batch), `PATCH /{id}/members/{user_id}`,
-`PATCH /{id}/pending-members/{email}`. Gates: backend **pytest 170** (22 new), **tsc**
-clean. Browser data-flow check was CORS-blocked (preview forced off `:3000`, backend
-allows `:3000` only) — Members tab confirmed to mount without runtime error; full flow
-verifiable on the user's own `:3000`. Deferred (filed): admin-only gating, member/invite
-removal, invite expiry. See [[modules/project-provisioning]] §Settings → Members, `log.md`.
+2026-06-17. **RAG target changed to LightRAG multimodal service.** The original
+RAG-Anything wording is now superseded: [[modules/rag]] remains the app-owned
+adapter at `backend/app/rag.py`, but it will call a separate LightRAG service
+container. Local testing uses PostgreSQL-backed LightRAG storage for parity; GCP
+will point the same adapter at Cloud SQL PostgreSQL. First slice still indexes
+meeting text artifacts (transcripts, summaries, decisions, actions, blockers) with
+project-scoped citation metadata; multimodal ingestion is enabled by the service
+boundary for screenshots, PDFs, Office docs, and images in later slices. Spec:
+`docs/superpowers/specs/2026-06-17-lightrag-multimodal-rag-design.md`. Beads:
+`ScrumAgent-o39` is the backend adapter issue; a new ops issue tracks the
+LightRAG + local Postgres compose foundation.
 
 ## Key Recent Facts
 - Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker
   Compose for Municorn (`@municorn.com`); second target = single GCE VM.
-- Two services: `backend` (FastAPI + DeepAgents + 3 agents + DB + RAG),
-  `frontend` (Next.js 14 at `apps/web/`).
+- Services: `backend` (FastAPI + DeepAgents + 3 agents + app adapters),
+  `frontend` (Next.js 14 at `apps/web/`), plus planned `lightrag` and local
+  `postgres` services for RAG.
 - LLM OpenAI-only (`gpt-5.4-mini`). Jira via **Rovo**, Notion via **MCP**.
-  Prod DB Cloud SQL Postgres, local/tests SQLite.
+  Prod DB Cloud SQL Postgres; local app tests may stay SQLite, but RAG local
+  parity uses PostgreSQL for LightRAG storage.
 - Canonical plan: [[sources/mvp-v2-plan]]. Tracking: `bd`. TDD mandatory.
 - Quality gates today: `tsc --noEmit` + Playwright e2e (no unit-test runner in
   `apps/web`); backend `pytest`. ESLint not configured.
@@ -42,6 +37,8 @@ removal, invite expiry. See [[modules/project-provisioning]] §Settings → Memb
 ## What just shipped (same day, newest first)
 - **Suggested members / Settings → Members** (`idt`): the above. Spec+plan in
   `docs/superpowers/{specs,plans}/2026-06-16-suggested-members*.md`.
+- **LightRAG multimodal RAG design**: separate LightRAG service, app-owned
+  `app/rag.py` adapter, local Postgres storage parity, Cloud SQL on GCP.
 - **DRY/altitude refactors** (`iar`/`1yf`/`7xk`/`44x`/`zis`): single meetings
   fan-out provider, centralized backend project-access gate (`require_project_access`
   + `can_access_all_projects`), shared calendar-date / avatar / `useCurrentUser`
@@ -70,5 +67,6 @@ removal, invite expiry. See [[modules/project-provisioning]] §Settings → Memb
   rows never expire (`2of`) — same gap now for `PendingProjectMember` invites.
   `.gitignore` glob breaks `rg` (`n60`).
 - Member-management follow-ups: removal, admin-only gating, invite expiry.
-- Next value-first backend slice: `wqj` LLM gateway → `die` orchestrator →
-  `qor` Rovo + `ilz` Notion MCP → `2u9` jira_notion agent.
+- Next value-first backend slice now needs the LightRAG ops foundation plus
+  `o39` RAG adapter before `n6h` user_chat and `2bt` meeting_participation can
+  consume retrieval/indexing.

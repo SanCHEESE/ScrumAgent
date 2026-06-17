@@ -2,13 +2,30 @@
 type: meta
 title: "Wiki Log"
 created: 2026-05-10
-updated: 2026-06-16
+updated: 2026-06-17
 tags: [meta, log]
 ---
 
 # Wiki Log
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
+
+## 2026-06-17 — RAG target changed to LightRAG multimodal service
+
+The RAG architecture moved from the original RAG-Anything wording to a separate
+LightRAG multimodal service. `backend/app/rag.py` remains the app-owned adapter
+contract, so agents and routers do not depend on LightRAG internals. Local
+testing will use PostgreSQL-backed LightRAG storage for parity; GCP will point
+the same storage adapter at Cloud SQL PostgreSQL.
+
+First implementation slice remains text-first: meeting transcripts, summaries,
+decisions, action items, and blockers are indexed with `project_id`, `meeting_id`,
+artifact metadata, and citation refs. The service boundary leaves room for later
+multimodal artifacts (screenshots, PDFs, Office docs, images) without changing
+agent contracts. Updated [[modules/rag]], [[concepts/lightrag-multimodal]],
+[[concepts/rag-anything]], [[sources/concept]], [[sources/mvp-v2-plan]],
+[[domains/backend]], [[domains/deployment]], and the hot cache. Spec written at
+`docs/superpowers/specs/2026-06-17-lightrag-multimodal-rag-design.md`.
 
 ## 2026-06-16 — Suggested members + batch-add + editable roles in Settings → Members (ScrumAgent-idt)
 

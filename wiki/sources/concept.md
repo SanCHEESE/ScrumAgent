@@ -5,7 +5,7 @@ status: summarized
 source_path: ".raw/migrated/concept.md"
 original_path: "docs/specs/concept.md"
 created: 2026-05-10
-updated: 2026-05-10
+updated: 2026-06-17
 tags: [source, spec, concept]
 ---
 
@@ -30,7 +30,7 @@ Original: `.raw/migrated/concept.md` (also kept at `docs/specs/concept.md`).
 | Backend | FastAPI |
 | Runtime | DeepAgents |
 | LLM | OpenAI |
-| RAG | RAG-Anything |
+| RAG | LightRAG multimodal service (supersedes original RAG-Anything wording) |
 | MCP | Atlassian + Notion |
 | DB | SQLite |
 | Storage | local `./data` |
@@ -41,6 +41,12 @@ Original: `.raw/migrated/concept.md` (also kept at `docs/specs/concept.md`).
 
 - **MVP:** login, ingest, RAG, chat, staged updates, trace.
 - **Post-MVP:** diarization, OCR, cross-meeting memory, hardening, live assistant.
+
+## Current RAG refinement
+
+The original concept named RAG-Anything. The active design now targets a separate
+LightRAG multimodal service behind the app-owned [[modules/rag]] adapter. Local
+testing uses PostgreSQL-backed LightRAG storage; GCP uses Cloud SQL PostgreSQL.
 
 ## Where this lands in the wiki
 

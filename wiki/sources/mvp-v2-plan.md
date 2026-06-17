@@ -5,7 +5,7 @@ status: synthesized
 source_path: ".raw/migrated/mvp_v2.md"
 original_path: "docs/plans/mvp_v2.md"
 created: 2026-05-10
-updated: 2026-05-10
+updated: 2026-06-17
 tags: [source, plan, canonical]
 ---
 
@@ -27,9 +27,19 @@ The **authoritative execution contract** for building the MVP.
 
 ## Tech stack (canonical)
 
-- **Backend:** FastAPI, Uvicorn, SQLAlchemy, SQLite, OpenAI via `langchain-openai`, DeepAgents runtime, MCP Python client, `langchain-mcp-adapters`, RAG-Anything, Google auth + API clients, `python-jose`, `pytest`.
+- **Backend:** FastAPI, Uvicorn, SQLAlchemy, SQLite/local Postgres where scoped,
+  OpenAI via `langchain-openai`, DeepAgents runtime, MCP Python client,
+  `langchain-mcp-adapters`, LightRAG multimodal service behind `app/rag.py`,
+  Google auth + API clients, `python-jose`, `pytest`.
 - **Frontend:** Next.js 14, TypeScript, Tailwind, shadcn/ui, Vitest or Jest, Playwright.
-- **Runtime:** Docker Compose, local `./data/db`, `./data/rag`, `./data/keys`.
+- **Runtime:** Docker Compose, local `./data/db`, local PostgreSQL for LightRAG
+  storage parity, LightRAG service container, `./data/keys`.
+
+## Current RAG refinement
+
+The original plan named RAG-Anything. The implementation target is now LightRAG
+multimodal in a separate container. The backend owns the stable adapter contract
+in `app/rag.py`; agents never call LightRAG directly.
 
 ## Where this lands in the wiki
 

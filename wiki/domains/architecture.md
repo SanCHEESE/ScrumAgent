@@ -2,7 +2,7 @@
 type: domain
 title: "Architecture"
 created: 2026-05-10
-updated: 2026-05-10
+updated: 2026-06-17
 tags: [domain, architecture]
 ---
 
@@ -12,16 +12,21 @@ High-level shape of the system. Source: [[sources/tech-architecture]].
 
 ## Topology
 
-Two Docker Compose services + a shared `./data` volume:
+Core Docker Compose services plus the RAG service plane:
 
 ```text
 docker-compose
-├── backend      FastAPI + DeepAgents runtime + 3 agents + SQLite + RAG + MCP
+├── backend      FastAPI + DeepAgents runtime + 3 agents + app adapters
 ├── frontend     Next.js 14 + TypeScript + Tailwind + shadcn/ui
-└── ./data/      db/, rag/, keys/   (mounted into backend only)
+├── lightrag     multimodal RAG service
+├── postgres     local LightRAG storage parity
+└── ./data/      db/, keys/, service runtime state
 ```
 
-`backend` is a single Python container hosting API, background jobs, and all agents. `frontend` is a separate UI container. OAuth flow runs through FastAPI; JWT is forwarded to the frontend after callback.
+`backend` is a Python container hosting API, background jobs, all agents, and
+app-owned adapters. `frontend` is a separate UI container. LightRAG is a separate
+service container reached through [[modules/rag]]. OAuth flow runs through
+FastAPI; JWT is forwarded to the frontend after callback.
 
 ## Boundaries
 
@@ -33,7 +38,7 @@ docker-compose
 
 - [[modules/runtime-orchestrator]] — DeepAgents runtime, handoff policy, trace recording
 - [[modules/llm-gateway]] — OpenAI client (`llm.py`)
-- [[modules/rag]] — RAG-Anything wrapper (`rag.py`)
+- [[modules/rag]] — LightRAG service adapter (`rag.py`)
 - [[modules/calendar-sync]] — Google Calendar/Meet adapter (`calendar_sync.py`)
 - [[modules/mcp-clients]] — Atlassian + Notion MCP adapters (`mcp_clients.py`)
 - [[modules/trace-store]] — agent run / step persistence (`trace_store.py`)
@@ -46,7 +51,12 @@ docker-compose
 
 ## Database
 
-SQLite at `/data/db/dev.db`. Tables: `users`, `meetings`, `meeting_artifacts`, `meeting_summaries`, `meeting_decisions`, `meeting_action_items`, `proposed_updates`, `sync_operations`, `agent_runs`, `agent_steps`, `settings`. `agent_runs` and `agent_steps` must exist before the trace UI ships.
+App relational state is selected by `DATABASE_URL`: SQLite remains available for
+local/test loops, and Cloud SQL PostgreSQL is the production target. LightRAG
+uses PostgreSQL-backed storage adapters locally and on GCP. Tables include
+`users`, `conversations`, `messages`, `meetings`, `meeting_artifacts`,
+`updates`, `trace_runs`, `trace_steps`, `integrations`, and project-domain
+tables.
 
 ## Decisions that shaped this
 

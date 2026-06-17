@@ -2,7 +2,7 @@
 type: domain
 title: "Deployment"
 created: 2026-05-10
-updated: 2026-06-16
+updated: 2026-06-17
 tags: [domain, deployment, docker, gcp]
 ---
 
@@ -28,6 +28,8 @@ docker compose up --build
 
 - Backend: `http://localhost:8000`
 - Frontend: `http://localhost:3000`
+- LightRAG: internal Compose service, reached by backend over the Docker network
+- PostgreSQL: local Compose service for LightRAG storage parity
 
 ### Runtime environments
 
@@ -101,7 +103,9 @@ A single VM with a persistent disk running the exact same `docker compose up` st
 ### Shape
 
 - **1 VM**: `e2-standard-2` or `n2-standard-2`, Container-Optimized OS or Debian 12.
-- **1 persistent SSD**: 100 GB, mounted at `/opt/scrumagent/data/`. Contains `db/`, `rag/`, `keys/`.
+- **1 persistent SSD**: 100 GB, mounted at `/opt/scrumagent/data/`. Contains
+  service runtime state and `keys/`; relational/RAG storage moves to PostgreSQL
+  where scoped.
 - **Static external IP** reserved; A record in Cloud DNS.
 - **Firewall**: 80/443 open to internet; 22 only via IAP.
 - **Caddy** in front of `backend` (8000) and `frontend` (3000), auto Let's Encrypt for TLS.
@@ -186,7 +190,9 @@ FRONTEND_URL=http://localhost:3000
 
 # Storage
 DATABASE_URL=sqlite:////data/db/dev.db
-RAG_STORAGE_PATH=/data/rag
+RAG_PROVIDER=lightrag
+LIGHTRAG_BASE_URL=http://lightrag:9621
+LIGHTRAG_WORKSPACE=scrumagent
 
 # Atlassian Rovo (Jira)
 ROVO_BASE_URL=https://api.atlassian.com/rovo
@@ -218,6 +224,8 @@ LETSENCRYPT_EMAIL=
 ## Rollout phases
 
 1. **Local MVP** — auth, ingest, RAG, runtime, staged updates, trace UI. Canonical plan: [[sources/mvp-v2-plan]].
-2. **GCP deployment** — single-VM Compute Engine target alongside local. See [[decisions/2026-05-18-gcp-compute-engine-deployment]].
+2. **GCP deployment** — single-VM Compute Engine target alongside local, with
+   LightRAG storage pointed at Cloud SQL PostgreSQL. See
+   [[decisions/2026-05-18-gcp-compute-engine-deployment]].
 3. **Post-MVP intelligence** — diarization, OCR/screenshots, cross-meeting memory.
 4. **Production hardening** — split into Cloud Run + Cloud SQL + GCS when scale demands; queue separation if needed.

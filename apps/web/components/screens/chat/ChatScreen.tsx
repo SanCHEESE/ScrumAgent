@@ -320,10 +320,11 @@ export function ChatScreen(): JSX.Element {
       setStreaming(false);
       setActiveSessionId(id);
       conversationIdRef.current = id;
+      const targetId = id;
       api
         .getMessages(projectId, id)
         .then((rows) => {
-          if (generationRef.current !== generationRef.current) return; // always no-op check; real guard is conversationIdRef
+          if (conversationIdRef.current !== targetId) return; // a newer session was opened; drop this stale result
           setMessages(rowsToMessages(rows));
         })
         .catch(() => {
@@ -403,7 +404,7 @@ export function ChatScreen(): JSX.Element {
               </div>
             )}
             {messages.map((m, i) => (
-              <ChatMessage key={i} message={m} />
+              <ChatMessage key={m.dbId != null ? `db-${m.dbId}` : `ix-${i}`} message={m} />
             ))}
             {showFollowups && lastMessage?.followups && (
               <div className="chat-followups">

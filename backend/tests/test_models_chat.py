@@ -2,6 +2,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from app.models.chat import Conversation, Message
+from app.models.project import Project
 from app.models.types import MessageRole
 from app.models.user import User
 
@@ -9,13 +10,28 @@ from app.models.user import User
 def _user(db):
     u = User(google_sub="sub-1", email="u@municorn.com")
     db.add(u)
-    db.flush()
+    db.commit()
+    db.refresh(u)
     return u
+
+
+def _project(db, owner):
+    p = Project(
+        owner_id=owner.id,
+        name="P",
+        agent_email="a@municorn.com",
+        google_connected=True,
+    )
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+    return p
 
 
 def test_create_conversation_and_message(db_session):
     user = _user(db_session)
-    convo = Conversation(user_id=user.id, agent="user_chat", title="hi")
+    project = _project(db_session, user)
+    convo = Conversation(user_id=user.id, project_id=project.id, agent="user_chat", title="hi")
     db_session.add(convo)
     db_session.flush()
     msg = Message(

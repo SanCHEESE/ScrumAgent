@@ -2,6 +2,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from app.models.chat import Conversation
+from app.models.project import Project
 from app.models.user import User
 
 
@@ -25,8 +26,18 @@ def test_google_sub_unique(db_session):
 def test_user_conversations_relationship(db_session):
     user = User(google_sub="s", email="u@municorn.com")
     db_session.add(user)
-    db_session.flush()
-    convo = Conversation(user_id=user.id, agent="user_chat")
+    db_session.commit()
+    db_session.refresh(user)
+    project = Project(
+        owner_id=user.id,
+        name="P",
+        agent_email="a@municorn.com",
+        google_connected=True,
+    )
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    convo = Conversation(user_id=user.id, project_id=project.id, agent="user_chat")
     db_session.add(convo)
     db_session.commit()
     assert user.conversations == [convo]

@@ -18,6 +18,9 @@ class Conversation(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "conversations"
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id"), nullable=False, index=True
+    )
     agent: Mapped[str] = mapped_column(String(64), nullable=False)
     title: Mapped[str | None] = mapped_column(String(255))
     updated_at: Mapped[datetime] = mapped_column(

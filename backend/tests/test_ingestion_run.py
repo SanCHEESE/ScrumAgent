@@ -60,13 +60,21 @@ class FakeNotion:
 
 
 class FakeRag:
-    def __init__(self): self.cleared = []
+    def __init__(self): self.cleared = []; self.indexed = []
+    async def pipeline_busy(self): return False
     async def clear_project(self, pid): self.cleared.append(pid); return 0
-    async def index_documents(self, pid, docs): return IndexResult(submitted=len(list(docs)), track_id="t")
+    async def index_documents(self, pid, docs):
+        self.indexed.append(pid)
+        return IndexResult(submitted=len(list(docs)), track_id="t")
 
 
 class ExplodingRag(FakeRag):
     async def index_documents(self, pid, docs): raise RagError("down")
+
+
+class BusyRag(FakeRag):
+    """LightRAG reports another job already in flight."""
+    async def pipeline_busy(self): return True
 
 
 def _doc(i):
@@ -151,3 +159,45 @@ def test_auto_clears_before_indexing():
     # edited items would otherwise pile up as orphaned content-hash docs.
     assert rag.cleared == [project.id]
     assert run.status == IngestionStatus.completed
+
+
+def test_resync_deferred_when_pipeline_busy():
+    db = _session()
+    project = _project(db, with_jira=True)
+    run = _run(db, project, trigger=IngestionTrigger.resync)
+    rag = BusyRag()
+    asyncio.run(execute_run(
+        run, session=db, project=project, rag=rag, jira_reader=FakeJira([_doc(1)]),
+    ))
+    # A destructive resync must NOT fight an in-flight LightRAG job: no clear, no
+    # index, and a soft `deferred` (not a scary `failed`) so the scheduler retries.
+    assert run.status == IngestionStatus.deferred
+    assert rag.cleared == [] and rag.indexed == []
+    assert run.error is None
+    assert run.finished_at is not None
+
+
+def test_auto_deferred_when_pipeline_busy():
+    db = _session()
+    project = _project(db, with_jira=True)
+    run = _run(db, project, trigger=IngestionTrigger.auto)
+    rag = BusyRag()
+    asyncio.run(execute_run(
+        run, session=db, project=project, rag=rag, jira_reader=FakeJira([_doc(1)]),
+    ))
+    assert run.status == IngestionStatus.deferred
+    assert rag.cleared == [] and rag.indexed == []
+
+
+def test_created_ignores_busy_pipeline():
+    db = _session()
+    project = _project(db, with_jira=True)
+    run = _run(db, project, trigger=IngestionTrigger.created)
+    rag = BusyRag()
+    asyncio.run(execute_run(
+        run, session=db, project=project, rag=rag, jira_reader=FakeJira([_doc(1)]),
+    ))
+    # First-time indexing never clears and must not defer on a busy probe — it
+    # only ever runs when the pipeline is expected idle.
+    assert run.status == IngestionStatus.completed
+    assert rag.indexed == [project.id] and rag.cleared == []

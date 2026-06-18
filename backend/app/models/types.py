@@ -104,6 +104,9 @@ class IngestionStatus(str, enum.Enum):
     completed = "completed"
     partial = "partial"
     failed = "failed"
+    # A destructive resync/auto run skipped because LightRAG was busy with another
+    # job; not a failure — the scheduler retries it (ScrumAgent-vw3).
+    deferred = "deferred"
 
 
 class IngestionTrigger(str, enum.Enum):

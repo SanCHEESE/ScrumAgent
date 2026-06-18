@@ -2,7 +2,7 @@
 type: flow
 title: "Backlog ingestion"
 created: 2026-06-17
-updated: 2026-06-17
+updated: 2026-06-18
 tags: [flow, ingestion, rag, jira, notion, auto-sync]
 ---
 
@@ -18,11 +18,12 @@ START (project created OR resync requested OR auto-sync due)
   -> IngestionRunner.schedule()   # non-blocking asyncio.create_task
   -> run_ingestion()              # own DB session
   -> execute_run()                # per-source error isolation
+  -> RagClient.pipeline_busy()    # on resync OR auto: another job in flight? -> defer
   -> JiraReadClient / NotionReadClient
   -> RagClient.clear_project()    # on resync OR auto (LightRAG has no upsert)
   -> RagClient.index_documents()
   -> LightRAG POST /documents/texts
-  -> END (IngestionRun status = completed | partial | failed)
+  -> END (IngestionRun status = completed | partial | failed | deferred)
 ```
 
 ## Steps
@@ -55,6 +56,15 @@ START (project created OR resync requested OR auto-sync due)
    LightRAG v1.5.3 has no per-doc metadata, caller-id, or upsert support (API
    spike `ScrumAgent-m3c`) — an edited issue/page would otherwise pile up as a new
    content-hash doc, orphaning the old one.
+9. **Defer-on-busy** (`ScrumAgent-vw3`): before that destructive clear, `execute_run`
+   probes `RagClient.pipeline_busy()`. If LightRAG is already busy with another job
+   (e.g. a still-draining initial index of a large backlog), the run is marked
+   `deferred` (not `failed`, no error banner) and returns without clearing — the
+   scheduler retries on the next tick. This stops a resync from fighting LightRAG's
+   single-flight pipeline into a `RAG_PIPELINE_MAX_WAIT_SECONDS` timeout-then-fail.
+   First-time `created` ingestion never probes (the pipeline is expected idle); a
+   failing probe is treated as "proceed" so a genuinely-down LightRAG still fails
+   loudly.
 
 ## Periodic auto-sync (`app/auto_sync.py`)
 
@@ -96,7 +106,7 @@ pending/running guard limits damage, but horizontal scaling should revisit this
 |---|---|
 | `id` | UUID primary key |
 | `project_id` | FK to `Project` |
-| `status` | `pending` → `running` → `completed` / `partial` / `failed` |
+| `status` | `pending` → `running` → `completed` / `partial` / `failed` / `deferred` |
 | `trigger` | `created`, `resync`, or `auto` |
 | `created_at` / `updated_at` | timestamps |
 

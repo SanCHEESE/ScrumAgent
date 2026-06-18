@@ -91,6 +91,20 @@ Polling is bounded by `RAG_PIPELINE_POLL_SECONDS` / `RAG_PIPELINE_MAX_WAIT_SECON
 exceeding the wait surfaces a `RagError` (a hard, visible run failure) rather than a
 partial sync.
 
+- `pipeline_busy()` — public one-shot probe of `pipeline_status.busy`. Ingestion
+  calls it before a destructive resync/auto clear: if LightRAG is already busy with
+  another job, the run is **deferred** instead of fighting the single-flight pipeline
+  into a 120s timeout-then-`failed` (`ScrumAgent-vw3`; see [[flows/backlog-ingestion]]).
+
+**Embedding throughput (`ScrumAgent-vw3`):** LightRAG's defaults (8 concurrent
+embedding workers, 30s func / 60s worker timeout) overload OpenAI on a large backlog
+— rate-limit backoff trips the worker timeout, FAILing docs and halting the pipeline
+(observed: 493/2626 docs failed on a 2626-doc Jira backlog). The `lightrag` compose
+service now defaults to `EMBEDDING_FUNC_MAX_ASYNC=2`, `EMBEDDING_TIMEOUT=180`,
+`MAX_PARALLEL_INSERT=2` (all overridable via `LIGHTRAG_*` env) — slower but reliable;
+raise on a higher OpenAI tier. To re-run only failed docs without a full re-fetch:
+`POST /documents/reprocess_failed`.
+
 ### Implemented (read side — ScrumAgent-r0k / 2jb)
 
 - `retrieve(project_id, question, k)` → `list[{text, score, citation{source_kind,

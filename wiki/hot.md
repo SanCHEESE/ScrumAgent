@@ -8,15 +8,26 @@ tags: [meta, hot-cache]
 # Recent Context
 
 ## Last Updated
-2026-06-18. Reviewed and patched the freshly shipped **user_chat RAG streaming
-chat** slice. The slice is still live end-to-end: project-scoped RAG retrieval,
-SSE streaming, inline citations, private resumable conversations, and Remember
-write-back. Code-review fixes landed for seed auto-send, project switching,
-SSE 401 handling, conversation ordering, and stale chat flow docs. Verification:
-backend pytest **247 tests green**, `apps/web` typecheck green, `next build`
-green, and `chat.spec.ts` **7/7 Playwright tests green**.
+2026-06-18. **Hardened RAG sync against a busy/overloaded LightRAG pipeline**
+(`ScrumAgent-vw3`), found by debugging a live eSIM-project error
+`clear_project failed: LightRAG pipeline still busy after 120s`. Two fixes: (1)
+LightRAG embedding throughput guard (compose env: concurrency 8→2, embedding
+timeout 30→180s) so a large backlog stops blowing the 60s embedding worker
+timeout; (2) `execute_run` now defers a resync/auto run (new
+`IngestionStatus.deferred`) when LightRAG is busy with another job, instead of
+hard-failing after a 120s wait. Verified: **255 backend tests green**, web tsc
+clean; live reprocess of the 493 failed eSIM docs ran with zero 60s timeouts.
 
 ## What just shipped (newest first)
+
+- **RAG sync hardening** (ScrumAgent-vw3): `RagClient.pipeline_busy()` probe +
+  defer-on-busy in `execute_run` (no more scary "Last sync error" / scheduler
+  retry-storm when an index is in flight); `IngestionStatus.deferred`; LightRAG
+  compose throughput knobs `LIGHTRAG_EMBEDDING_FUNC_MAX_ASYNC=2` /
+  `LIGHTRAG_EMBEDDING_TIMEOUT=180` / `LIGHTRAG_MAX_PARALLEL_INSERT=2`. Recovery via
+  LightRAG `POST /documents/reprocess_failed`. See [[flows/backlog-ingestion]],
+  [[modules/rag]]. **Root cause was NOT `x0f` (403 no-access)** — embeddings work,
+  they just timed out under the default 8-way concurrency on a 2626-doc backlog.
 
 - **Code-review fixes for live chat** (ScrumAgent-5t3):
   - `/chat?seed=...` waits for a real active project before consuming/sending the

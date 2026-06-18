@@ -25,6 +25,7 @@ const RUN_STATUS_LABEL: Record<string, string> = {
   failed: "Failed",
   running: "Running",
   pending: "Pending",
+  deferred: "Deferred (LightRAG busy)",
 };
 
 export function KnowledgeBaseSection(): JSX.Element {

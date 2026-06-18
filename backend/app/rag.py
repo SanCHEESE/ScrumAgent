@@ -128,6 +128,18 @@ class RagClient:
         resp.raise_for_status()
         return bool(resp.json().get("busy"))
 
+    async def pipeline_busy(self) -> bool:
+        """Public probe: is LightRAG's single-flight pipeline currently running?
+
+        Ingestion uses this to defer a destructive resync rather than fight an
+        in-flight job and burn the bounded idle-wait into a hard failure
+        (ScrumAgent-vw3)."""
+        try:
+            async with self._client_factory() as client:
+                return await self._pipeline_busy(client)
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            raise RagError(f"pipeline_busy failed: {exc}") from exc
+
     def _idle_attempts(self) -> int:
         if self._poll_interval <= 0:
             return 1

@@ -62,6 +62,14 @@ services:
       EMBEDDING_BINDING_API_KEY: ${OPENAI_API_KEY}
       EMBEDDING_MODEL: ${LIGHTRAG_EMBEDDING_MODEL:-text-embedding-3-small}
       EMBEDDING_DIM: ${LIGHTRAG_EMBEDDING_DIM:-1536}
+      # Indexing throughput guard (ScrumAgent-vw3): LightRAG's default 8 concurrent
+      # embedding workers against OpenAI rate-limit a large backlog hard enough to
+      # blow the embedding worker timeout (default 30s func / 60s worker), which
+      # FAILs docs and halts the whole pipeline. Fewer parallel calls + a longer
+      # timeout trade speed for reliable indexing; raise on a higher OpenAI tier.
+      EMBEDDING_FUNC_MAX_ASYNC: ${LIGHTRAG_EMBEDDING_FUNC_MAX_ASYNC:-2}
+      EMBEDDING_TIMEOUT: ${LIGHTRAG_EMBEDDING_TIMEOUT:-180}
+      MAX_PARALLEL_INSERT: ${LIGHTRAG_MAX_PARALLEL_INSERT:-2}
       LIGHTRAG_KV_STORAGE: PGKVStorage
       LIGHTRAG_DOC_STATUS_STORAGE: PGDocStatusStorage
       LIGHTRAG_GRAPH_STORAGE: PGGraphStorage

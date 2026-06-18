@@ -10,6 +10,37 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-18 — RAG sync hardening: defer-on-busy + embedding throughput guard (ScrumAgent-vw3)
+
+Debugged a live eSIM-project error `clear_project failed: LightRAG pipeline still
+busy after 120s`. Two linked root causes, both fixed:
+
+1. **LightRAG embedding overload.** The eSIM Jira backlog is **2626 docs**. LightRAG's
+   default **8** concurrent embedding workers (`EMBEDDING_FUNC_MAX_ASYNC`) against
+   OpenAI `text-embedding-3-small` hit rate-limit backoff that pushed calls past the
+   **60s** embedding *worker* timeout (`EMBEDDING_TIMEOUT=30` → worker 60s) → **493/2626
+   docs FAILED** and the pipeline halted at batch 2134. While that long job ran,
+   `pipeline_status.busy` stayed true >120s, so a concurrent resync's `clear_project`
+   idle-wait timed out → the reported error. (Distinct from `x0f` 403-no-access.)
+   Fix: lower embedding concurrency + raise the timeout via new overridable compose
+   env — `LIGHTRAG_EMBEDDING_FUNC_MAX_ASYNC=2`, `LIGHTRAG_EMBEDDING_TIMEOUT=180`,
+   `LIGHTRAG_MAX_PARALLEL_INSERT=2`. Verified live: workers re-init as
+   `2 workers, Func 180s/Worker 360s`, reprocess of the 493 failed ran with **zero**
+   60s timeouts.
+2. **App fragility.** A destructive resync/auto run that meets a busy pipeline waited
+   the bounded `RAG_PIPELINE_MAX_WAIT_SECONDS=120` then hard-failed as `failed` (scary
+   "Last sync error"); since `failed` isn't a success the scheduler kept re-firing.
+   Fix: `execute_run` now probes `RagClient.pipeline_busy()` before the destructive
+   clear; if LightRAG is busy with another job the run is marked the new
+   `IngestionStatus.deferred` (no error banner) and the scheduler retries next tick.
+   First-time `created` ingestion never probes. A failing probe means "proceed" so a
+   genuinely-down LightRAG still surfaces. New `pipeline_busy()` adapter method.
+
+Recovery: used LightRAG `POST /documents/reprocess_failed` (re-processes only the 493
+FAILED docs, no re-fetch, no full wipe). Tests: 255 backend green (+3 new); web tsc
+clean. Touches `rag.py`, `ingestion.py`, `models/types.py`, `KnowledgeBaseSection.tsx`,
+`docker-compose.yml`, `.env.example`. Follow-up to `ScrumAgent-srp`.
+
 ## 2026-06-18 — Code-review fixes for live user_chat regressions (ScrumAgent-5t3)
 
 Reviewed the 2026-06-18 user_chat/RAG streaming commits and fixed confirmed

@@ -67,6 +67,29 @@ def test_index_documents_empty_is_noop():
     assert result.submitted == 0
 
 
+def test_pipeline_busy_reflects_status_flag():
+    def busy(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/documents/pipeline_status"
+        return httpx.Response(200, json={"busy": True})
+
+    def idle(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"busy": False})
+
+    assert asyncio.run(_client(busy).pipeline_busy()) is True
+    assert asyncio.run(_client(idle).pipeline_busy()) is False
+
+
+def test_pipeline_busy_raises_ragerror_on_http_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={})
+
+    try:
+        asyncio.run(_client(handler).pipeline_busy())
+        raise AssertionError("expected RagError")
+    except RagError:
+        pass
+
+
 def test_index_documents_raises_ragerror_on_http_error():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500, json={"detail": "boom"})

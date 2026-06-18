@@ -56,6 +56,20 @@ async def execute_run(
     session.commit()
 
     if run.trigger in (IngestionTrigger.resync, IngestionTrigger.auto):
+        # Resync is destructive (clear-then-reindex). If LightRAG is already busy
+        # with another job, don't fight its single-flight pipeline — the bounded
+        # idle-wait would just time out and land as a scary `failed`. Defer instead;
+        # the scheduler retries on the next tick (ScrumAgent-vw3). A failing probe
+        # is treated as "proceed" so a genuinely-down LightRAG still surfaces below.
+        try:
+            busy = await rag.pipeline_busy()
+        except Exception:  # noqa: BLE001 — probe failure must not block the run
+            busy = False
+        if busy:
+            run.status = IngestionStatus.deferred
+            run.finished_at = _now()
+            session.commit()
+            return
         try:
             await rag.clear_project(project.id)
         except Exception as exc:  # noqa: BLE001 — surface as a hard failure

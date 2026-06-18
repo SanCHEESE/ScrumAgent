@@ -327,38 +327,55 @@ def test_clear_project_drains_pipeline_before_returning():
 # --- Retrieve (read side) ---
 
 
-def _query_handler(chunks):
-    """Serve POST /query (context-only) returning the given chunk dicts."""
+def _query_handler(references):
+    """Serve POST /query (only_need_context) in LightRAG v1.5.3's real response
+    shape: {"response": ..., "references": [{reference_id, file_path, content:[...]}]}.
+    Confirmed against the live /openapi.json QueryResponse (ScrumAgent-uzx)."""
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/query"
         import json
         body = json.loads(request.content)
         assert body["only_need_context"] is True
-        return httpx.Response(200, json={"data": {"chunks": chunks}})
+        # references + per-reference chunk text only come back when requested.
+        assert body["include_references"] is True
+        assert body["include_chunk_content"] is True
+        return httpx.Response(200, json={"response": "ctx", "references": references})
     return handler
 
 
 def test_retrieve_returns_passages_with_parsed_citations():
-    chunks = [
-        {"content": "Login fails on mobile.", "file_path": "proj-1::jira::PLAT-12", "score": 0.91},
-        {"content": "Release notes v2.", "file_path": "proj-1::notion::page-7", "score": 0.72},
+    references = [
+        {"reference_id": "1", "file_path": "proj-1::jira::PLAT-12",
+         "content": ["Login fails on mobile."]},
+        {"reference_id": "2", "file_path": "proj-1::notion::page-7",
+         "content": ["Release notes v2."]},
     ]
-    out = asyncio.run(_client(_query_handler(chunks)).retrieve("proj-1", "why login fails", k=4))
+    out = asyncio.run(_client(_query_handler(references)).retrieve("proj-1", "why login fails", k=4))
     assert [type(p) for p in out] == [RetrievedPassage, RetrievedPassage]
     assert out[0].text == "Login fails on mobile."
-    assert out[0].score == 0.91
+    # LightRAG /query carries no per-reference score; passages keep retrieval order.
+    assert out[0].score == 0.0
     assert out[0].citation == Citation(source_kind="jira", source_id="PLAT-12", title=None, source_uri=None)
     assert out[1].citation.source_kind == "notion"
 
 
-def test_retrieve_drops_cross_project_and_uncited_hits():
-    chunks = [
-        {"content": "mine", "file_path": "proj-1::jira::A", "score": 0.9},
-        {"content": "other project", "file_path": "proj-2::jira::B", "score": 0.95},
-        {"content": "no provenance", "file_path": "", "score": 0.8},
-        {"content": "partial provenance", "file_path": "proj-1::jira", "score": 0.6},
+def test_retrieve_joins_multiple_chunk_contents_per_reference():
+    references = [
+        {"reference_id": "1", "file_path": "proj-1::jira::PLAT-12",
+         "content": ["First chunk.", "Second chunk."]},
     ]
-    out = asyncio.run(_client(_query_handler(chunks)).retrieve("proj-1", "q", k=4))
+    out = asyncio.run(_client(_query_handler(references)).retrieve("proj-1", "q", k=4))
+    assert out[0].text == "First chunk.\n\nSecond chunk."
+
+
+def test_retrieve_drops_cross_project_and_uncited_hits():
+    references = [
+        {"reference_id": "1", "file_path": "proj-1::jira::A", "content": ["mine"]},
+        {"reference_id": "2", "file_path": "proj-2::jira::B", "content": ["other project"]},
+        {"reference_id": "3", "file_path": "", "content": ["no provenance"]},
+        {"reference_id": "4", "file_path": "proj-1::jira", "content": ["partial provenance"]},
+    ]
+    out = asyncio.run(_client(_query_handler(references)).retrieve("proj-1", "q", k=4))
     assert [p.text for p in out] == ["mine"]
 
 

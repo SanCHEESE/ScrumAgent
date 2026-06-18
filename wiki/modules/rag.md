@@ -95,15 +95,24 @@ partial sync.
 
 - `retrieve(project_id, question, k)` → `list[{text, score, citation{source_kind,
   source_id, title, source_uri}}]`  
-  Calls LightRAG `/query` with `only_need_context=true` (returns raw context chunks,
-  no LLM call inside LightRAG), then **post-filters** hits to only those whose
-  `file_source` starts with `"{project_id}::"`.  
-  - Drops any chunk without a recognised citation (no `file_source` tag at all).
-  - Drops chunks from other projects (cross-project leakage).
-  - Returns at most `k` passages sorted by LightRAG score descending.  
-  This two-step approach is the **anti-hallucination / no-leakage** guarantee: even
-  though LightRAG's knowledge graph is shared across all projects, `retrieve` only
-  ever surfaces passages provably tagged to the calling project.
+  Calls LightRAG `/query` with `only_need_context=true` plus `include_references=true`
+  and `include_chunk_content=true` (no LLM call inside LightRAG — we run our own
+  grounded generation). LightRAG v1.5.3 returns
+  `{response, references:[{reference_id, file_path, content:[chunk_text, ...]}]}`
+  (shape confirmed live against `/openapi.json`, ScrumAgent-uzx — **not** the
+  `{data:{chunks}}` the first cut assumed). `retrieve` reads `references`, joins each
+  reference's `content` list into one passage, and **post-filters** to references
+  whose `file_path` starts with `"{project_id}::"`.  
+  - Drops any reference without a recognised citation (no usable `file_path` tag).
+  - Drops references from other projects (cross-project leakage).
+  - Passages keep LightRAG's returned relevance order. The response carries **no
+    per-reference score**, so `score` is a `0.0` placeholder (list order is the
+    ranking signal), not a similarity value.  
+  This post-filter is the **anti-hallucination / no-leakage** guarantee: even though
+  LightRAG's knowledge graph is shared across all projects, `retrieve` only ever
+  surfaces passages provably tagged to the calling project — verified live, where a
+  raw `/query` returned references spanning two projects and `retrieve` kept only the
+  caller's.
 
 - `clear_source(project_id, source_kind, source_id)` — exact-match delete of a
   single document (by the full `"{project_id}::{source_kind}::{source_id}"`

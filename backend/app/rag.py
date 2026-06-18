@@ -294,28 +294,38 @@ class RagClient:
                         "query": question,
                         "mode": "mix",
                         "top_k": k,
+                        # Context only: we run our own grounded generation, so skip
+                        # LightRAG's answer synthesis and ask for the source
+                        # references with their chunk text.
                         "only_need_context": True,
+                        "include_references": True,
+                        "include_chunk_content": True,
                     },
                 )
                 resp.raise_for_status()
-                chunks = (resp.json().get("data") or {}).get("chunks") or []
+                # LightRAG v1.5.3 QueryResponse: {"response": str, "references":
+                # [{"reference_id", "file_path", "content": [chunk_text, ...]}]}.
+                # There is no "data"/"chunks" wrapper and no per-reference score
+                # (ScrumAgent-uzx: confirmed against the live /openapi.json).
+                references = resp.json().get("references") or []
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             raise RagError(f"retrieve failed: {exc}") from exc
 
         passages: list[RetrievedPassage] = []
-        for chunk in chunks:
-            file_path = str(chunk.get("file_path", ""))
+        for ref in references:
+            file_path = str(ref.get("file_path", ""))
             if not file_path.startswith(prefix):
                 continue
             citation = _parse_citation(file_path)
             if citation is None:
                 continue
-            passages.append(
-                RetrievedPassage(
-                    text=str(chunk.get("content", "")),
-                    # missing score -> 0.0 keeps the passage ranked last rather than dropped
-                    score=float(chunk.get("score", 0.0)),
-                    citation=citation,
-                )
+            content = ref.get("content")
+            text = (
+                "\n\n".join(str(c) for c in content)
+                if isinstance(content, list)
+                else str(content or "")
             )
+            # LightRAG returns references in relevance order and carries no numeric
+            # score; 0.0 is a placeholder and list order is the ranking signal.
+            passages.append(RetrievedPassage(text=text, score=0.0, citation=citation))
         return passages

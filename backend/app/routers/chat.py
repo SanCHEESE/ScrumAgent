@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 
 from app.agents.user_chat import CitationsEvent, TokenEvent
 from app.agents.user_chat import run as agent_run
-from app.deps import get_current_user, get_db, get_orchestrator
+from app.rag import RagDocument
+from app.deps import get_current_user, get_db, get_orchestrator, get_rag_client
 from app.models import Project, User
 from app.models.chat import Conversation, Message
 from app.models.types import MessageRole, RunStatus, StepKind
@@ -155,3 +156,28 @@ def get_messages(
                    created_at=m.created_at.isoformat())
         for m in chat_repo.get_history(db, convo.id)
     ]
+
+
+@router.post("/chat/messages/{message_id}/remember")
+async def remember(
+    project_id: str,
+    message_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    rag=Depends(get_rag_client),
+    project: Project = Depends(require_project_access),
+):
+    msg = db.get(Message, message_id)
+    if msg is None or msg.role != MessageRole.assistant:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Answer not found")
+    convo = _owned_conversation(db, conversation_id=msg.conversation_id, user=user,
+                                project_id=project_id)
+    # nearest preceding user message in this conversation = the question
+    question = next(
+        (m.content for m in reversed(chat_repo.get_history(db, convo.id))
+         if m.id < msg.id and m.role == MessageRole.user), "")
+    doc = RagDocument(text=f"{question}\n\n{msg.content}", source_kind="note",
+                      source_id=str(message_id), title=question[:120], source_uri="")
+    await rag.clear_source(project_id, "note", str(message_id))   # dedup, no flag
+    result = await rag.index_documents(project_id, [doc])
+    return {"track_id": result.track_id, "status": "ok"}

@@ -144,3 +144,49 @@ def test_get_messages_owner_scoped(client, db_session):
     roles = [m["role"] for m in resp.json()]
     assert roles == ["user", "assistant"]
     assert resp.json()[1]["meta"]["citations"][0]["source_id"] == "PLAT-12"
+
+
+def test_remember_dedups_then_indexes_qa(client, db_session):
+    user = _user(db_session); project = _project(db_session, user)
+    r = client.post(f"/projects/{project.id}/chat", headers=_auth(user.id), json={"message": "why login?"})
+    mid = next(e for e in _sse_events(r) if e["type"] == "done")["message_id"]
+
+    calls = []
+    class _Rag:
+        async def clear_source(self, pid, kind, sid):
+            calls.append(("clear", pid, kind, sid)); return 0
+        async def index_documents(self, pid, docs):
+            calls.append(("index", pid, docs[0].source_kind, docs[0].source_id, docs[0].text))
+            from app.rag import IndexResult
+            return IndexResult(submitted=1, track_id="trk-9")
+    app.dependency_overrides[deps.get_rag_client] = lambda: _Rag()
+    try:
+        resp = client.post(f"/projects/{project.id}/chat/messages/{mid}/remember", headers=_auth(user.id))
+        assert resp.status_code == 200 and resp.json()["track_id"] == "trk-9"
+        assert calls[0] == ("clear", project.id, "note", str(mid))   # dedup BEFORE index
+        assert calls[1][0] == "index" and calls[1][2] == "note" and calls[1][3] == str(mid)
+        assert calls[1][4].startswith("why login?")                  # Q then A
+    finally:
+        app.dependency_overrides.pop(deps.get_rag_client, None)
+
+
+def test_remember_rejects_other_users_message(client, db_session):
+    owner = _user(db_session); project = _project(db_session, owner)
+    r = client.post(f"/projects/{project.id}/chat", headers=_auth(owner.id), json={"message": "q"})
+    mid = next(e for e in _sse_events(r) if e["type"] == "done")["message_id"]
+    intruder = _user(db_session, email="eve@municorn.com", sub="sub-eve")
+    project.members.append(ProjectMember(user_id=intruder.id, role=ProjectRole.member)); db_session.commit()
+    resp = client.post(f"/projects/{project.id}/chat/messages/{mid}/remember", headers=_auth(intruder.id))
+    assert resp.status_code in (403, 404)
+
+
+def test_get_messages_non_owner_gets_404(client, db_session):
+    # closes the Task-11 gap: a project member who is NOT the conversation owner
+    # cannot read its messages.
+    owner = _user(db_session); project = _project(db_session, owner)
+    r = client.post(f"/projects/{project.id}/chat", headers=_auth(owner.id), json={"message": "q"})
+    cid = next(e for e in _sse_events(r) if e["type"] == "meta")["conversation_id"]
+    intruder = _user(db_session, email="eve@municorn.com", sub="sub-eve")
+    project.members.append(ProjectMember(user_id=intruder.id, role=ProjectRole.member)); db_session.commit()
+    resp = client.get(f"/projects/{project.id}/conversations/{cid}/messages", headers=_auth(intruder.id))
+    assert resp.status_code in (403, 404)

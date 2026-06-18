@@ -124,3 +124,23 @@ def test_chat_rejects_other_users_conversation(client, db_session):
     resp = client.post(f"/projects/{project.id}/chat", headers=_auth(intruder.id),
                        json={"message": "steal", "conversation_id": cid})
     assert resp.status_code in (403, 404)
+
+
+def test_list_conversations_only_mine(client, db_session):
+    user = _user(db_session); project = _project(db_session, user)
+    client.post(f"/projects/{project.id}/chat", headers=_auth(user.id), json={"message": "mine"})
+    resp = client.get(f"/projects/{project.id}/conversations", headers=_auth(user.id))
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert len(rows) == 1 and rows[0]["title"] == "mine"
+
+
+def test_get_messages_owner_scoped(client, db_session):
+    user = _user(db_session); project = _project(db_session, user)
+    r = client.post(f"/projects/{project.id}/chat", headers=_auth(user.id), json={"message": "q"})
+    cid = next(e for e in _sse_events(r) if e["type"] == "meta")["conversation_id"]
+    resp = client.get(f"/projects/{project.id}/conversations/{cid}/messages", headers=_auth(user.id))
+    assert resp.status_code == 200
+    roles = [m["role"] for m in resp.json()]
+    assert roles == ["user", "assistant"]
+    assert resp.json()[1]["meta"]["citations"][0]["source_id"] == "PLAT-12"

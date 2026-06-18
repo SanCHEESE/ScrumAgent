@@ -30,6 +30,20 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = None
 
 
+class ConversationOut(BaseModel):
+    id: str
+    title: str | None
+    updated_at: str
+
+
+class MessageOut(BaseModel):
+    id: int
+    role: str
+    content: str
+    meta: dict | None
+    created_at: str
+
+
 def _owned_conversation(db, *, conversation_id, user, project_id) -> Conversation:
     convo = db.get(Conversation, conversation_id)
     if convo is None or convo.user_id != user.id or convo.project_id != project_id:
@@ -110,3 +124,34 @@ async def chat(
             yield _sse({"type": "error", "detail": str(exc)})
 
     return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+@router.get("/conversations", response_model=list[ConversationOut])
+def list_conversations(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    project: Project = Depends(require_project_access),
+):
+    rows = chat_repo.list_conversations(db, user_id=user.id, project_id=project_id)
+    return [
+        ConversationOut(id=c.id, title=c.title, updated_at=c.updated_at.isoformat())
+        for c in rows
+    ]
+
+
+@router.get("/conversations/{conversation_id}/messages", response_model=list[MessageOut])
+def get_messages(
+    project_id: str,
+    conversation_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    project: Project = Depends(require_project_access),
+):
+    convo = _owned_conversation(db, conversation_id=conversation_id, user=user,
+                                project_id=project_id)
+    return [
+        MessageOut(id=m.id, role=m.role.value, content=m.content, meta=m.meta,
+                   created_at=m.created_at.isoformat())
+        for m in chat_repo.get_history(db, convo.id)
+    ]

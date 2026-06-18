@@ -9,61 +9,130 @@ import {
 import type { JSX, KeyboardEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
+import { useActiveProject } from "@/components/shell/ActiveProjectProvider";
+import { api } from "@/lib/api";
+import type { ChatCitation, ConversationRow, ChatMessageRow } from "@/lib/api";
+import { streamChat } from "@/lib/chat-stream";
 import { ChatHistoryPane } from "./ChatHistoryPane";
 import { ChatMessage } from "./ChatMessage";
 import {
   CHAT_SEED,
-  SESSIONS,
   nowHHMM,
-  pickResponse,
   type Message,
+  type Session,
+  type Source,
 } from "./mock-responses";
 
 /**
+ * Map a backend ChatCitation to the Source shape ChatMessage renders.
+ * Source = { type: SourceType, name: string }
+ * SourceType = "meeting" | "transcript" | "notion" | "file"
+ */
+function citationToSource(c: ChatCitation): Source {
+  const kindMap: Record<string, Source["type"]> = {
+    meeting: "meeting",
+    transcript: "transcript",
+    notion: "notion",
+    file: "file",
+  };
+  const type: Source["type"] = kindMap[c.source_kind] ?? "file";
+  const name = c.title ?? `${c.source_kind}:${c.source_id}`;
+  return { type, name };
+}
+
+/** Map a ConversationRow to the Session shape ChatHistoryPane renders. */
+function convRowToSession(row: ConversationRow): Session {
+  // Format the updated_at timestamp to a readable label
+  const date = new Date(row.updated_at);
+  const now = new Date();
+  const isToday =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday =
+    date.getFullYear() === yesterday.getFullYear() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getDate() === yesterday.getDate();
+
+  let tsLabel: string;
+  if (isToday) {
+    tsLabel = `Today · ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  } else if (isYesterday) {
+    tsLabel = `Yesterday · ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  } else {
+    tsLabel = date.toLocaleDateString([], { month: "short", day: "numeric" });
+  }
+
+  return {
+    id: row.id,
+    title: row.title ?? "Untitled session",
+    preview: "",
+    ts: tsLabel,
+    msgs: 0,
+  };
+}
+
+/** Map backend ChatMessageRow[] to the local Message[] shape. */
+function rowsToMessages(rows: ChatMessageRow[]): Message[] {
+  return rows
+    .filter((r) => r.role === "user" || r.role === "assistant")
+    .map((r) => {
+      const ts = new Date(r.created_at).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      if (r.role === "user") {
+        return { role: "user" as const, text: r.content, ts, final: true };
+      }
+      // assistant
+      const citations = r.meta?.citations ?? [];
+      return {
+        role: "agent" as const,
+        text: r.content,
+        ts,
+        final: true,
+        sources: citations.map(citationToSource),
+        dbId: r.id,
+      };
+    });
+}
+
+/**
  * Top-level chat screen. Owns:
- *  - the message list & streaming simulation (setTimeout-driven)
+ *  - the message list & SSE streaming (via streamChat)
  *  - history pane state (search, active session, collapse)
  *  - composer input + Enter-to-send wiring
  *  - seed-from-URL auto-send (Home screen links to /chat?seed=…)
  *
- * Streaming uses a generation ref + a tracked Set of pending timers so a new
- * send (or unmount) can cancel in-flight chunks cleanly without leaking
- * state into the next response.
+ * Streaming uses a generation ref so a new send supersedes the previous one
+ * cleanly without leaking state into the next response.
  */
 export function ChatScreen(): JSX.Element {
+  const { activeProject } = useActiveProject();
+  const projectId = activeProject.id;
+  const noProject = projectId === "__no-project__";
+
   const [messages, setMessages] = useState<Message[]>(CHAT_SEED);
   const [input, setInput] = useState<string>("");
   const [streaming, setStreaming] = useState<boolean>(false);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>("s1");
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [historySearch, setHistorySearch] = useState<string>("");
   const [historyCollapsed, setHistoryCollapsed] = useState<boolean>(false);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  // All pending timers from the current send(); cleared on cancel/unmount.
-  const timersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
-  // Bumps on every send() / cancel() so older timer callbacks become no-ops.
+  // Bumps on every send() / cancel() so older SSE callbacks become no-ops.
   const generationRef = useRef<number>(0);
+  // Tracks the current conversation id across the session.
+  const conversationIdRef = useRef<string | null>(null);
 
   const cancelStreaming = useCallback((): void => {
     generationRef.current += 1;
-    for (const t of timersRef.current) clearTimeout(t);
-    timersRef.current.clear();
   }, []);
 
-  const schedule = useCallback(
-    (cb: () => void, ms: number): void => {
-      const gen = generationRef.current;
-      const handle = setTimeout(() => {
-        timersRef.current.delete(handle);
-        if (gen !== generationRef.current) return;
-        cb();
-      }, ms);
-      timersRef.current.add(handle);
-    },
-    [],
-  );
-
-  // Always cancel pending timers when the component unmounts.
+  // Always cancel pending stream when the component unmounts.
   useEffect(() => {
     return () => {
       cancelStreaming();
@@ -77,16 +146,34 @@ export function ChatScreen(): JSX.Element {
     }
   }, [messages]);
 
+  // Load conversation list whenever the active project changes.
+  const loadConversations = useCallback((): void => {
+    if (noProject) {
+      setSessions([]);
+      return;
+    }
+    api
+      .listConversations(projectId)
+      .then((rows) => setSessions(rows.map(convRowToSession)))
+      .catch(() => {
+        // Non-fatal — history pane just shows empty
+      });
+  }, [projectId, noProject]);
+
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
+
   const send = useCallback(
     (text: string): void => {
       const trimmed = text.trim();
-      if (!trimmed) return;
+      if (!trimmed || noProject) return;
       // Reset any in-flight stream before starting a new one.
       cancelStreaming();
+      const gen = generationRef.current;
 
       const ts = nowHHMM();
       const responseTs = nowHHMM();
-      const response = pickResponse(trimmed);
 
       setInput("");
       setStreaming(true);
@@ -98,81 +185,93 @@ export function ChatScreen(): JSX.Element {
           text: "",
           ts: responseTs,
           final: false,
-          actions: [],
           sources: [],
-          toolUse: null,
+          dbId: null,
         },
       ]);
 
-      // Walk through agent actions one by one before the prose stream begins.
-      let actionIdx = 0;
-      const showActions = (): void => {
-        const actions = response.actions ?? [];
-        if (actionIdx >= actions.length) {
-          streamText();
-          return;
-        }
-        schedule(() => {
-          const action = actions[actionIdx];
-          if (!action) return;
-          setMessages((m) => {
-            const next = [...m];
-            const last = next[next.length - 1];
-            if (!last || last.role !== "agent") return m;
-            next[next.length - 1] = {
-              ...last,
-              actions: [...(last.actions ?? []), action],
-            };
-            return next;
-          });
-          actionIdx += 1;
-          showActions();
-        }, 500);
-      };
+      streamChat(
+        projectId,
+        {
+          message: trimmed,
+          conversation_id: conversationIdRef.current ?? undefined,
+        },
+        (e) => {
+          if (gen !== generationRef.current) return;
 
-      const streamText = (): void => {
-        let chunkIdx = 0;
-        const pushChunk = (): void => {
-          if (chunkIdx >= response.chunks.length) {
-            // Final pass: attach sources / followups / tool-use, mark final.
+          if (e.type === "meta") {
+            conversationIdRef.current = e.conversation_id;
+          } else if (e.type === "token") {
             setMessages((m) => {
               const next = [...m];
               const last = next[next.length - 1];
               if (!last || last.role !== "agent") return m;
               next[next.length - 1] = {
                 ...last,
-                sources: response.sources ?? [],
-                followups: response.followups ?? [],
-                toolUse: response.toolUse ?? null,
-                needsConfirm: !!response.needsConfirm,
+                text: (last.text ?? "") + e.delta,
+              };
+              return next;
+            });
+          } else if (e.type === "citations") {
+            setMessages((m) => {
+              const next = [...m];
+              const last = next[next.length - 1];
+              if (!last || last.role !== "agent") return m;
+              next[next.length - 1] = {
+                ...last,
+                sources: e.items.map(citationToSource),
+              };
+              return next;
+            });
+          } else if (e.type === "done") {
+            setMessages((m) => {
+              const next = [...m];
+              const last = next[next.length - 1];
+              if (!last || last.role !== "agent") return m;
+              next[next.length - 1] = {
+                ...last,
+                final: true,
+                dbId: e.message_id,
+              };
+              return next;
+            });
+            setStreaming(false);
+            // Refresh history list after a completed turn
+            loadConversations();
+          } else if (e.type === "error") {
+            setMessages((m) => {
+              const next = [...m];
+              const last = next[next.length - 1];
+              if (!last || last.role !== "agent") return m;
+              next[next.length - 1] = {
+                ...last,
+                text: `⚠️ ${e.detail}`,
                 final: true,
               };
               return next;
             });
             setStreaming(false);
-            return;
           }
-          const chunk = response.chunks[chunkIdx];
-          if (chunk === undefined) return;
-          setMessages((m) => {
-            const next = [...m];
-            const last = next[next.length - 1];
-            if (!last || last.role !== "agent") return m;
-            next[next.length - 1] = {
-              ...last,
-              text: (last.text ?? "") + chunk,
-            };
-            return next;
-          });
-          chunkIdx += 1;
-          schedule(pushChunk, 140 + Math.random() * 100);
-        };
-        schedule(pushChunk, 300);
-      };
-
-      schedule(showActions, 300);
+        },
+      ).catch((err: unknown) => {
+        if (gen !== generationRef.current) return;
+        const detail =
+          err instanceof Error ? err.message : "Unexpected error";
+        setMessages((m) => {
+          const next = [...m];
+          const last = next[next.length - 1];
+          if (!last || last.role !== "agent") return m;
+          next[next.length - 1] = {
+            ...last,
+            text: `⚠️ ${detail}`,
+            final: true,
+          };
+          return next;
+        });
+        setStreaming(false);
+      });
     },
-    [cancelStreaming, schedule],
+    [cancelStreaming, projectId, noProject, loadConversations],
   );
 
   // Seed query auto-send: read once on mount.
@@ -185,7 +284,6 @@ export function ChatScreen(): JSX.Element {
       sentSeedRef.current = true;
       send(seed);
     } else {
-      // Mark so we don't re-trigger if the param later disappears.
       sentSeedRef.current = true;
     }
     // We intentionally only run this once per mount.
@@ -208,16 +306,32 @@ export function ChatScreen(): JSX.Element {
 
   const startNewSession = useCallback((): void => {
     cancelStreaming();
+    conversationIdRef.current = null;
     setMessages(CHAT_SEED);
     setInput("");
     setStreaming(false);
     setActiveSessionId(null);
   }, [cancelStreaming]);
 
-  const openSession = useCallback((id: string): void => {
-    setActiveSessionId(id);
-    // In a real app we'd hydrate the session's messages here.
-  }, []);
+  const openSession = useCallback(
+    (id: string): void => {
+      if (noProject) return;
+      cancelStreaming();
+      setStreaming(false);
+      setActiveSessionId(id);
+      conversationIdRef.current = id;
+      api
+        .getMessages(projectId, id)
+        .then((rows) => {
+          if (generationRef.current !== generationRef.current) return; // always no-op check; real guard is conversationIdRef
+          setMessages(rowsToMessages(rows));
+        })
+        .catch(() => {
+          // On error, leave messages as-is rather than crashing
+        });
+    },
+    [projectId, noProject, cancelStreaming],
+  );
 
   const lastMessage =
     messages.length > 0 ? messages[messages.length - 1] : undefined;
@@ -234,7 +348,7 @@ export function ChatScreen(): JSX.Element {
       className={`chat-screen chat-with-history ${historyCollapsed ? "history-collapsed" : ""}`}
     >
       <ChatHistoryPane
-        sessions={SESSIONS}
+        sessions={sessions}
         activeSessionId={activeSessionId}
         search={historySearch}
         onSearchChange={setHistorySearch}
@@ -262,7 +376,9 @@ export function ChatScreen(): JSX.Element {
               Agent <em>session</em>
             </div>
             <div className="chat-subtitle mono muted">
-              project: platform · rag: 142k chunks · model: claude-sonnet-4-6
+              {noProject
+                ? "select a project to start chatting"
+                : `project: ${activeProject.name}`}
             </div>
           </div>
           <div className="hstack">
@@ -278,6 +394,14 @@ export function ChatScreen(): JSX.Element {
 
         <div className="chat-scroll" ref={scrollRef}>
           <div className="chat-inner">
+            {noProject && (
+              <div
+                className="muted"
+                style={{ padding: "24px 16px", textAlign: "center", fontSize: 13 }}
+              >
+                Select a project to start chatting with ScrumAgent.
+              </div>
+            )}
             {messages.map((m, i) => (
               <ChatMessage key={i} message={m} />
             ))}
@@ -302,17 +426,22 @@ export function ChatScreen(): JSX.Element {
           <div className="chat-composer">
             <textarea
               className="chat-composer-input"
-              placeholder="Message ScrumAgent — Shift+Enter for newline"
+              placeholder={
+                noProject
+                  ? "Select a project first…"
+                  : "Message ScrumAgent — Shift+Enter for newline"
+              }
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onComposerKeyDown}
               rows={1}
+              disabled={noProject}
             />
             <div className="chat-composer-tools">
-              <button className="btn btn-ghost btn-sm" type="button">
+              <button className="btn btn-ghost btn-sm" type="button" disabled={noProject}>
                 <Icon name="plus" size={14} />
               </button>
-              <button className="btn btn-ghost btn-sm" type="button">
+              <button className="btn btn-ghost btn-sm" type="button" disabled={noProject}>
                 Context: <strong>last 10 meetings</strong>{" "}
                 <Icon name="chevron_down" size={12} />
               </button>
@@ -323,7 +452,7 @@ export function ChatScreen(): JSX.Element {
               <button
                 className="btn btn-primary btn-sm"
                 onClick={submit}
-                disabled={streaming || !input.trim()}
+                disabled={noProject || streaming || !input.trim()}
                 type="button"
               >
                 {streaming ? (

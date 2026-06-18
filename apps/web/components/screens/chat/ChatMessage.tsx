@@ -1,8 +1,11 @@
+import { useState } from "react";
 import type { JSX } from "react";
 import { Avatar } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
 import type { IconName } from "@/components/ui/Icon";
 import { PARTICIPANTS } from "@/lib/mock-data";
+import { api } from "@/lib/api";
+import { useActiveProject } from "@/components/shell/ActiveProjectProvider";
 import type { Message, Source } from "./mock-responses";
 import { StreamingText } from "./StreamingText";
 import { ToolUseCard } from "./ToolUseCard";
@@ -11,12 +14,17 @@ export interface ChatMessageProps {
   message: Message;
 }
 
+type RememberState = "idle" | "saving" | "saved";
+
 /**
  * Renders a single user or agent message. Agent messages compose the action
- * trace, streaming text body, optional tool-use card, and source chips. User
- * messages collapse to a single bubble + meta footer.
+ * trace, streaming text body, optional tool-use card, source chips, and a
+ * Remember button (final messages with a persisted dbId only).
  */
 export function ChatMessage({ message: m }: ChatMessageProps): JSX.Element {
+  const { activeProject } = useActiveProject();
+  const [rememberState, setRememberState] = useState<RememberState>("idle");
+
   if (m.role === "user") {
     const alice = PARTICIPANTS.alice;
     return (
@@ -29,6 +37,22 @@ export function ChatMessage({ message: m }: ChatMessageProps): JSX.Element {
       </div>
     );
   }
+
+  const canRemember =
+    m.final && m.dbId != null && activeProject.id !== "__no-project__";
+
+  const handleRemember = async (): Promise<void> => {
+    if (!canRemember || rememberState === "saving") return;
+    setRememberState("saving");
+    try {
+      await api.remember(activeProject.id, m.dbId as number);
+      setRememberState("saved");
+    } catch {
+      // On error reset to idle so the user can retry
+      setRememberState("idle");
+    }
+  };
+
   return (
     <div className="msg msg-agent">
       <div className="msg-avatar">
@@ -73,6 +97,26 @@ export function ChatMessage({ message: m }: ChatMessageProps): JSX.Element {
                 <Icon name={sourceIcon(s)} size={10} /> {s.name}
               </a>
             ))}
+          </div>
+        )}
+        {canRemember && (
+          <div className="msg-actions">
+            {rememberState === "saved" ? (
+              <span className="mono muted" style={{ fontSize: 11 }}>
+                <Icon name="check" size={11} /> Saved to knowledge base
+              </span>
+            ) : (
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => void handleRemember()}
+                disabled={rememberState === "saving"}
+                type="button"
+                title="Save this response to the knowledge base"
+              >
+                <Icon name="brain" size={12} />
+                {rememberState === "saving" ? "Saving…" : "Remember"}
+              </button>
+            )}
           </div>
         )}
       </div>

@@ -36,6 +36,8 @@ export interface Message {
   followups?: string[];
   toolUse?: ToolUse | null;
   needsConfirm?: boolean;
+  /** Persisted message id from the backend — present on final assistant messages. */
+  dbId?: number | null;
 }
 
 export interface SampleResponse {

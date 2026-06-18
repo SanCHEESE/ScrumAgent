@@ -36,6 +36,7 @@ def finish_run(db: Session, *, run_id: str, status: RunStatus) -> None:
         run.status = status
         run.finished_at = func.now()
         db.flush()
+        db.refresh(run)
 
 
 def get_run(db: Session, run_id: str) -> TraceRun | None:

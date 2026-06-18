@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable, Sequence
 
 from app.config import Settings
+from app.models.types import UsageKind
 
 # Usage units are millions of tokens (matches LlmUsage.input_units semantics).
 _PER_MILLION = 1_000_000
@@ -29,6 +30,11 @@ class LlmGateway:
             stream_usage=True,
         )
         return cls(model=model, usage_writer=usage_writer)
+
+    def set_usage_writer(self, writer) -> None:
+        """Set the per-run usage sink after construction (the router captures a
+        request-local list)."""
+        self._usage_writer = writer
 
     async def stream_chat(
         self,
@@ -63,7 +69,7 @@ class LlmGateway:
                     "provider": "openai",
                     "model": getattr(self._model, "model_name", None)
                     or getattr(self._model, "model", "unknown"),
-                    "kind": "llm",
+                    "kind": UsageKind.llm,
                     "category": "chat",
                     "input_units": in_tok / _PER_MILLION,
                     "output_units": out_tok / _PER_MILLION,

@@ -63,21 +63,23 @@ async def chat(
         {"role": m.role.value, "content": m.content}
         for m in chat_repo.get_history(db, convo.id)
         if m.role in (MessageRole.user, MessageRole.assistant)
-    ][:-1]
+    ][:-1]  # exclude the message just appended; it's passed to the agent explicitly
+    # db stays open for the whole stream: FastAPI tears down yield-deps only after StreamingResponse is fully sent.
     db.commit()
 
     async def stream() -> AsyncIterator[str]:
         ctx = RunContext(project_id=project_id, user_id=user.id,
                          conversation_id=convo.id, run_id="")
-        run_id = await orchestrator.start_run(AgentName.user_chat, ctx)
-        yield _sse({"type": "meta", "conversation_id": convo.id, "run_id": run_id})
-        usage_rows: list[dict] = []
-        services = orchestrator.services_for(AgentName.user_chat, ctx)
-        if services is not None and getattr(services, "llm", None) is not None:
-            services.llm._usage_writer = usage_rows.append
-        text_parts: list[str] = []
-        citations: list[dict] = []
+        run_id = ""
         try:
+            run_id = await orchestrator.start_run(AgentName.user_chat, ctx)
+            yield _sse({"type": "meta", "conversation_id": convo.id, "run_id": run_id})
+            usage_rows: list[dict] = []
+            services = orchestrator.services_for(AgentName.user_chat, ctx)
+            if services is not None and getattr(services, "llm", None) is not None:
+                services.llm.set_usage_writer(usage_rows.append)
+            text_parts: list[str] = []
+            citations: list[dict] = []
             async for event in agent_run(ctx, message=body.message,
                                          history=history, services=services):
                 if isinstance(event, TokenEvent):
@@ -102,7 +104,8 @@ async def chat(
             db.commit()
             yield _sse({"type": "done", "message_id": msg.id})
         except Exception as exc:  # surface as a stream error, mark run failed
-            orchestrator.finish(run_id, RunStatus.failed)
+            if run_id:
+                orchestrator.finish(run_id, RunStatus.failed)
             db.commit()
             yield _sse({"type": "error", "detail": str(exc)})
 

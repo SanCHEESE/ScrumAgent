@@ -2,7 +2,7 @@
 type: domain
 title: "Agents"
 created: 2026-05-10
-updated: 2026-05-18
+updated: 2026-06-18
 tags: [domain, agents]
 ---
 
@@ -23,13 +23,23 @@ Three agents, fixed for MVP. Each has a hard capability boundary enforced by the
 
 ## `user_chat`
 
+**Status: implemented** (ScrumAgent-r0k / 2jb, 2026-06-18). Implemented as a
+**deterministic pipeline** (NOT a tool-loop): retrieve always first, then either a
+fixed "not in knowledge base" message (zero LLM calls) or a grounded LLM stream
+with inline citations. See [[flows/chat]] for the full pipeline.
+
 **Owns:** the user-facing chat answer.
 
-- RAG retrieval via [[modules/rag]].
-- Decides whether live Jira/Notion context is needed (and asks orchestrator for handoff).
+- RAG retrieval via [[modules/rag]] — `retrieve(project_id, question, k)` is called
+  unconditionally before any LLM invocation.
 - Streams the final answer with citations over SSE.
+- No external writes — the [[modules/runtime-orchestrator]] `GatedServices` proxy
+  enforces a read-only capability allow-list for this agent.
+- Decides whether live Jira/Notion context is needed (handoff mechanism exists in
+  the orchestrator but is unused in this slice — no live Jira/Notion handoff yet).
 
-**Cannot:** make external writes. Cannot bypass the orchestrator.
+**Cannot:** make external writes. Cannot bypass the orchestrator. Cannot surface
+content from outside the project's knowledge base (project-scoped RAG filter).
 
 ## `jira_notion`
 

@@ -10,6 +10,66 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-18 — user_chat RAG streaming chat slice (ScrumAgent-r0k / 2jb / o39)
+
+Shipped the project-scoped, RAG-grounded chat end-to-end. Answers come ONLY from
+the knowledge base (anti-hallucination by construction). Streams over SSE with
+inline citations. Conversations are private and resumable per user/project. A
+"Remember" button pushes Q+A answers back into the RAG index.
+
+**What shipped (code + tests):**
+
+- `backend/app/rag.py` gained `retrieve(project_id, question, k)` (LightRAG
+  `/query` with `only_need_context`, then project-prefix post-filter — drops
+  cross-project + uncited chunks) and `clear_source(project_id, kind, id)` (exact
+  `file_source` delete used for Remember dedup). `index_meeting` remains planned
+  (`ScrumAgent-o39`).
+- `backend/app/llm.py`: `LlmGateway` — streaming wrapper over
+  `langchain_openai.ChatOpenAI`; model from `OPENAI_CHAT_MODEL or OPENAI_MODEL`;
+  writes one `LlmUsage` row per call. New setting `openai_chat_model`.
+  `langchain-openai` added to requirements.
+- `backend/app/runtime/` (orchestrator): `contracts.py` (`AgentName`, `RunMode`,
+  `RunContext`, `HandoffTarget`, `CAPABILITIES` allow-list) + `orchestrator.py`
+  (`Orchestrator`, `GatedServices` proxy, `CapabilityError`, trace recording,
+  mediated handoff).
+- `backend/app/repositories/trace.py`: `start_run` / `record_step` / `finish_run` /
+  `get_run` / `list_steps` read+write repository (models pre-existed).
+- `backend/app/agents/user_chat.py`: DETERMINISTIC pipeline — retrieve always first;
+  empty context → fixed "not in knowledge base" message, ZERO LLM calls; else
+  grounded prompt (numbered passages + last 10 history msgs) → stream tokens →
+  citations. Yields `TokenEvent` / `CitationsEvent`.
+- `backend/app/routers/chat.py`: `POST /projects/{id}/chat` (SSE:
+  meta→token\*→citations→done/error), `GET /projects/{id}/conversations`, `GET
+  /projects/{id}/conversations/{cid}/messages`, `POST
+  /projects/{id}/chat/messages/{mid}/remember`. JWT + `require_project_access` +
+  per-user conversation ownership.
+- `backend/app/models/chat.py`: `Conversation` gained `project_id` FK (NOT NULL,
+  indexed) — conversations are project-scoped AND private.
+- Frontend `apps/web`: real SSE chat in `ChatScreen.tsx` (replaces setTimeout mock),
+  Remember button in `ChatMessage.tsx`, resumable per-project history,
+  `lib/chat-stream.ts` (fetch-based SSE reader) + chat methods in `lib/api.ts`.
+  `tsc` clean.
+- **245 backend unit tests green.** Live e2e against Docker/LightRAG/OpenAI is NOT
+  yet done — tracked as `ScrumAgent-uzx`.
+
+**Key decisions made this slice:**
+
+1. **App-owned orchestrator, NOT deepagents/langgraph** — determinism +
+   testability + structural anti-hallucination for a single non-handoff agent;
+   YAGNI on the tool-loop; clean seam to adopt the library when real multi-agent
+   handoff lands. ADR: [[decisions/2026-06-18-app-owned-orchestrator-not-deepagents-lib]].
+2. **Remember dedup via `clear_source`** — exact-match delete before re-insert
+   prevents duplicate passages from repeated presses on the same message.
+3. **Project-scoped private conversations** — `project_id` FK on `Conversation`;
+   only the owning user can read their conversations.
+4. **No live Jira/Notion handoff in this slice** — the orchestrator handoff
+   mechanism exists and is wired but unused; `user_chat` answers purely from RAG.
+
+**Wiki pages updated:** [[modules/rag]], [[modules/llm-gateway]],
+[[modules/runtime-orchestrator]], [[modules/trace-store]],
+[[concepts/deepagents-runtime]], [[flows/chat]], [[domains/agents]]. New ADR:
+[[decisions/2026-06-18-app-owned-orchestrator-not-deepagents-lib]].
+
 ## 2026-06-18 — Fix RAG re-sync race vs LightRAG single-flight pipeline (ScrumAgent-srp)
 
 Fixed the re-sync race found live in the `bah` full-stack test (308 docs → only 100

@@ -1,34 +1,90 @@
 ---
 type: flow
 title: "Chat"
+status: implemented
 created: 2026-05-10
-updated: 2026-05-10
+updated: 2026-06-18
 tags: [flow, chat, sse]
 ---
 
 # Chat
 
-User asks a question through the [[domains/frontend]] chat surface. Backend streams the answer over SSE.
+User asks a question through the [[domains/frontend]] chat surface. Backend
+streams the answer over SSE. **Implemented** end-to-end (ScrumAgent-r0k / 2jb,
+2026-06-18).
+
+## SSE event contract
+
+The router (`POST /projects/{id}/chat`) emits these events in order:
+
+| Event | Payload | Notes |
+|---|---|---|
+| `meta` | `{conversation_id, message_id}` | First event; client can resume if dropped |
+| `token` | `{text}` | One event per streamed token; many events |
+| `citations` | `[{source_kind, source_id, title, source_uri}]` | Single event after all tokens |
+| `done` | `{}` | Successful end |
+| `error` | `{detail}` | Replaces `done` on failure |
+
+## Pipeline (deterministic, NOT a tool-loop)
 
 ```text
 START
-  -> user_chat
-  -> [optional] jira_notion
-  -> user_chat
-  -> END
+  → retrieve(project_id, question, k)   ← rag.py
+  ↓
+  [empty context?]
+  → YES: emit fixed "not in knowledge base" message; ZERO LLM calls; done
+  → NO:
+      → grounded prompt (numbered passages + last 10 history msgs)
+      → stream tokens via LlmGateway
+      → emit token events
+      → emit citations event
+      → done
 ```
 
-## Steps
+The retrieve-first step is **unconditional** — the agent never calls the LLM
+before checking the knowledge base. This is the structural anti-hallucination
+guarantee by construction: answers are only generated from retrieved passages.
 
-1. `user_chat` retrieves passages from [[modules/rag]] (with citations).
-2. If RAG is insufficient and the question requires live Jira/Notion data, the [[modules/runtime-orchestrator]] hands off to `jira_notion` for read-only context.
-3. Control returns to `user_chat`, which composes the final answer.
-4. Answer is streamed via SSE; citations are included in the payload.
+## Jira/Notion handoff (designed, unused this slice)
+
+The orchestrator handoff mechanism exists in
+[[modules/runtime-orchestrator]], and the `jira_notion` path is designed:
+
+```text
+[optional, future]
+  user_chat → jira_notion (live context fetch) → user_chat (compose answer)
+```
+
+This handoff is not active in the current slice. The `user_chat` agent operates
+purely from RAG context for now.
+
+## Remember write-back loop
+
+After a chat answer is saved, the user can press "Remember" on any assistant
+message. This triggers `POST /projects/{id}/chat/messages/{mid}/remember`:
+
+1. `clear_source(project_id, "chat", message_id)` — remove any prior version of
+   this Q+A from the index (dedup).
+2. `index_documents(project_id, [{text: Q+A, file_source: ...}])` — push the
+   question + answer back into LightRAG so future retrieval can surface it.
+
+## Conversation ownership
+
+- Conversations are **private to their owner** (JWT `user_id`).
+- Conversations are **project-scoped** (`project_id` FK, NOT NULL, indexed on
+  `Conversation`).
+- `GET /projects/{id}/conversations` returns the calling user's conversations
+  only.
+- `GET /projects/{id}/conversations/{cid}/messages` returns messages for a
+  conversation the caller owns.
 
 ## Boundaries
 
-- `user_chat` cannot do external writes.
-- `jira_notion` cannot compose the final answer — it only fetches context and hands back.
+- `user_chat` cannot make external writes.
+- RAG retrieval enforces project scope (only passages tagged `"{project_id}::"`)
+  — no cross-project leakage.
+- The [[modules/runtime-orchestrator]] `GatedServices` proxy enforces the
+  read-only capability allow-list for `user_chat`.
 
 ## Trace
 

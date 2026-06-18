@@ -7,7 +7,7 @@ status: partial
 created: 2026-05-10
 updated: 2026-06-18
 depends_on: [llm-gateway]
-used_by: [runtime-orchestrator]
+used_by: [runtime-orchestrator, user_chat]
 tags: [module, rag]
 ---
 
@@ -91,18 +91,38 @@ Polling is bounded by `RAG_PIPELINE_POLL_SECONDS` / `RAG_PIPELINE_MAX_WAIT_SECON
 exceeding the wait surfaces a `RagError` (a hard, visible run failure) rather than a
 partial sync.
 
+### Implemented (read side — ScrumAgent-r0k / 2jb)
+
+- `retrieve(project_id, question, k)` → `list[{text, score, citation{source_kind,
+  source_id, title, source_uri}}]`  
+  Calls LightRAG `/query` with `only_need_context=true` (returns raw context chunks,
+  no LLM call inside LightRAG), then **post-filters** hits to only those whose
+  `file_source` starts with `"{project_id}::"`.  
+  - Drops any chunk without a recognised citation (no `file_source` tag at all).
+  - Drops chunks from other projects (cross-project leakage).
+  - Returns at most `k` passages sorted by LightRAG score descending.  
+  This two-step approach is the **anti-hallucination / no-leakage** guarantee: even
+  though LightRAG's knowledge graph is shared across all projects, `retrieve` only
+  ever surfaces passages provably tagged to the calling project.
+
+- `clear_source(project_id, source_kind, source_id)` — exact-match delete of a
+  single document (by the full `"{project_id}::{source_kind}::{source_id}"`
+  `file_source` key). Used by the Remember write-back path to dedup before
+  re-inserting a Q+A answer into the index (prevents duplicate passages from
+  repeated "Remember" presses on the same message).
+
 ### Planned
 
 - `index_meeting(...)` — feed normalized meeting artifacts (transcripts, summaries,
   decisions, action items) into the store. Tracked: `ScrumAgent-o39`.
-- `retrieve(query, ...)` — return passages with citation metadata and scores.
-  Tracked: `ScrumAgent-n6h`.
 
 ## Used by
 
 - `ingestion` — indexes Jira/Notion backlog documents on project creation and resync
   (see [[flows/backlog-ingestion]]).
 - `meeting_participation` — will index after analysis (planned).
-- `user_chat` — will retrieve before answering (planned).
+- `user_chat` — now live: calls `retrieve(project_id, question, k)` before every
+  answer; calls `clear_source` + `index_documents` on the "Remember" write-back
+  (see [[flows/chat]]).
 - `/settings -> Knowledge base` — now live: real source counts + index health via
   `status()`, plus an auto-sync toggle and "Sync now" (resync) (`ScrumAgent-bah`).

@@ -2,7 +2,7 @@
 type: meta
 title: "Wiki Index"
 created: 2026-05-10
-updated: 2026-06-17
+updated: 2026-06-18
 tags: [meta, index]
 ---
 
@@ -69,6 +69,7 @@ See [[modules/_index]] for full list. Highlights:
 ## Decisions
 
 - [[decisions/_index]]
+- [[decisions/2026-06-18-app-owned-orchestrator-not-deepagents-lib]] — MVP runtime app-owned, not deepagents/langgraph
 
 ## Flows
 

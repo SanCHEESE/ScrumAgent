@@ -241,6 +241,24 @@ class RagClient:
             raise RagError(f"clear failed: {exc}") from exc
         return len(ids)
 
+    async def clear_source(
+        self, project_id: str, source_kind: str, source_id: str
+    ) -> int:
+        target = f"{project_id}::{source_kind}::{source_id}"
+        ids: list[str] = []
+        try:
+            async with self._client_factory() as client:
+                async for doc in self._iter_project_docs(client, project_id):
+                    if str(doc.get("file_path", "")) == target and doc.get("id"):
+                        ids.append(doc["id"])
+                for start in range(0, len(ids), _DELETE_BATCH):
+                    await self._delete_batch(client, ids[start : start + _DELETE_BATCH])
+                if ids:
+                    await self._wait_for_idle(client)
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            raise RagError(f"clear_source failed: {exc}") from exc
+        return len(ids)
+
     async def status(self, project_id: str) -> RagStatus:
         by_status: dict[str, int] = {}
         by_source_kind: dict[str, int] = {}

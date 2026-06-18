@@ -375,3 +375,20 @@ def test_retrieve_raises_ragerror_on_http_error():
         raise AssertionError("expected RagError")
     except RagError:
         pass
+
+
+# --- clear_source: exact-file_source delete for Remember dedup (ScrumAgent-o39) ---
+
+
+def test_clear_source_deletes_only_exact_file_source():
+    docs = [
+        {"id": "a", "file_path": "proj-1::note::msg-1", "status": "processed"},
+        {"id": "b", "file_path": "proj-1::note::msg-2", "status": "processed"},   # other msg
+        {"id": "c", "file_path": "proj-1::jira::msg-1", "status": "processed"},    # other kind
+    ]
+    deleted: list[str] = []
+    count = asyncio.run(
+        _client(_paginated_handler(docs, deleted=deleted)).clear_source("proj-1", "note", "msg-1")
+    )
+    assert count == 1
+    assert deleted == ["a"]

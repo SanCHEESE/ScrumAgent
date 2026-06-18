@@ -1,4 +1,4 @@
-import { API_BASE, getToken } from "./auth";
+import { API_BASE, clearToken, getToken, redirectToLogin } from "./auth";
 import type { ChatCitation } from "./api";
 
 export type ChatEvent =
@@ -26,7 +26,14 @@ export async function streamChat(
     },
     body: JSON.stringify(body),
   });
-  if (!resp.ok || !resp.body) throw new Error(`chat failed (${resp.status})`);
+  if (!resp.ok) {
+    if (resp.status === 401) {
+      clearToken();
+      redirectToLogin();
+    }
+    throw new Error(`chat failed (${resp.status})`);
+  }
+  if (!resp.body) throw new Error(`chat failed (${resp.status})`);
 
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();

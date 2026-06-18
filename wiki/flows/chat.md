@@ -19,10 +19,10 @@ The router (`POST /projects/{id}/chat`) emits these events in order:
 
 | Event | Payload | Notes |
 |---|---|---|
-| `meta` | `{conversation_id, message_id}` | First event; client can resume if dropped |
-| `token` | `{text}` | One event per streamed token; many events |
-| `citations` | `[{source_kind, source_id, title, source_uri}]` | Single event after all tokens |
-| `done` | `{}` | Successful end |
+| `meta` | `{conversation_id, run_id}` | First event; client binds the active conversation and trace run |
+| `token` | `{delta}` | One event per streamed token delta; many events |
+| `citations` | `{items: [{source_kind, source_id, title, source_uri, score}]}` | Single event after all tokens |
+| `done` | `{message_id}` | Successful end; persisted assistant message id for Remember |
 | `error` | `{detail}` | Replaces `done` on failure |
 
 ## Pipeline (deterministic, NOT a tool-loop)
@@ -63,7 +63,7 @@ purely from RAG context for now.
 After a chat answer is saved, the user can press "Remember" on any assistant
 message. This triggers `POST /projects/{id}/chat/messages/{mid}/remember`:
 
-1. `clear_source(project_id, "chat", message_id)` — remove any prior version of
+1. `clear_source(project_id, "note", message_id)` — remove any prior version of
    this Q+A from the index (dedup).
 2. `index_documents(project_id, [{text: Q+A, file_source: ...}])` — push the
    question + answer back into LightRAG so future retrieval can surface it.

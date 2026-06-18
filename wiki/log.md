@@ -10,6 +10,35 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-18 — Code-review fixes for live user_chat regressions (ScrumAgent-5t3)
+
+Reviewed the 2026-06-18 user_chat/RAG streaming commits and fixed confirmed
+regressions in the live chat path.
+
+**Bugs fixed:**
+
+- `/chat?seed=...` could drop the Home → chat auto-send when the chat screen mounted
+  before `ActiveProjectProvider` finished loading projects. `ChatScreen` now waits
+  for a real active project before consuming and sending the seed.
+- Switching active projects kept the previous project's `conversationIdRef`,
+  active session, and persisted message ids. The first send in the next project
+  could include a stale `conversation_id` and get rejected by the backend. Project
+  changes now cancel in-flight streams and reset chat session state.
+- `lib/chat-stream.ts` used raw `fetch` without the shared 401 behavior. Expired
+  tokens during SSE chat now clear local auth storage and redirect to `/login`,
+  matching `apiFetch`.
+- `append_message()` did not bump `Conversation.updated_at`, so active old
+  conversations could stay buried in the history list. The repository now updates
+  the parent conversation timestamp in the same transaction.
+- `wiki/flows/chat.md` had stale SSE payload names (`text` instead of `delta`,
+  `message_id` in the wrong event) and the wrong Remember source kind. Contract
+  docs now match `routers/chat.py`.
+
+**Verification:** backend pytest green (**247 tests**); `apps/web` typecheck green;
+`apps/web` production build green; `chat.spec.ts` green (**7 Playwright tests**),
+including new regressions for delayed seed send, project switch reset, and SSE 401
+session expiry.
+
 ## 2026-06-18 — user_chat RAG streaming chat slice (ScrumAgent-r0k / 2jb / o39)
 
 Shipped the project-scoped, RAG-grounded chat end-to-end. Answers come ONLY from

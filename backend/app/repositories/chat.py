@@ -1,7 +1,7 @@
 """Persistence helpers for user chat history."""
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.chat import Conversation, Message
@@ -42,6 +42,9 @@ def append_message(
     meta: dict | None = None,
     trace_run_id: str | None = None,
 ) -> Message:
+    convo = db.get(Conversation, conversation_id)
+    if convo is not None:
+        convo.updated_at = func.now()
     msg = Message(
         conversation_id=conversation_id,
         role=role,

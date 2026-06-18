@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from app.models.project import Project
 from app.models.types import MessageRole
 from app.models.user import User
@@ -86,3 +88,26 @@ def test_append_and_get_history_in_order(db_session):
         MessageRole.assistant,
         MessageRole.user,
     ]
+
+
+def test_append_message_bumps_conversation_updated_at(db_session):
+    user = _make_user(db_session, "fresh@municorn.com", "s-fresh")
+    project = _make_project(db_session, user)
+    old_ts = datetime(2026, 1, 1)
+    convo = chat_repo.create_conversation(
+        db_session,
+        user_id=user.id,
+        project_id=project.id,
+        agent="user_chat",
+        title="old",
+    )
+    convo.updated_at = old_ts
+    db_session.commit()
+
+    chat_repo.append_message(
+        db_session, conversation_id=convo.id, role=MessageRole.user, content="new"
+    )
+    db_session.commit()
+    db_session.refresh(convo)
+
+    assert convo.updated_at != old_ts

@@ -8,6 +8,8 @@ import { defineConfig, devices } from "@playwright/test";
  * 3000 outside CI) so contributors don't need a separate terminal.
  */
 const isCI = !!process.env.CI;
+const port = process.env.PORT ?? "3000";
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${port}`;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -15,7 +17,7 @@ export default defineConfig({
   retries: isCI ? 2 : 0,
   reporter: isCI ? "github" : "list",
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL,
     trace: "retain-on-failure",
   },
   projects: [
@@ -26,7 +28,7 @@ export default defineConfig({
   ],
   webServer: {
     command: "npm run dev",
-    url: "http://localhost:3000",
+    url: baseURL,
     reuseExistingServer: !isCI,
     timeout: 60_000,
   },

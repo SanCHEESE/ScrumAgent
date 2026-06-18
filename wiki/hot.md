@@ -8,92 +8,73 @@ tags: [meta, hot-cache]
 # Recent Context
 
 ## Last Updated
-2026-06-18. **Shipped the user_chat RAG streaming chat slice end-to-end**
-(ScrumAgent-r0k / 2jb). Project-scoped, RAG-grounded chat with SSE streaming,
-inline citations, private resumable conversations, and a "Remember" write-back
-into the knowledge base. 245 backend unit tests green. Live e2e pending
-(`ScrumAgent-uzx`).
+2026-06-18. Reviewed and patched the freshly shipped **user_chat RAG streaming
+chat** slice. The slice is still live end-to-end: project-scoped RAG retrieval,
+SSE streaming, inline citations, private resumable conversations, and Remember
+write-back. Code-review fixes landed for seed auto-send, project switching,
+SSE 401 handling, conversation ordering, and stale chat flow docs. Verification:
+backend pytest **247 tests green**, `apps/web` typecheck green, `next build`
+green, and `chat.spec.ts` **7/7 Playwright tests green**.
 
 ## What just shipped (newest first)
 
-- **user_chat RAG streaming chat** (r0k / 2jb): Full end-to-end chat slice.
-  - `rag.retrieve(project_id, question, k)` — LightRAG `/query` with
-    `only_need_context`, post-filtered to `"{project_id}::"` prefix (anti-leakage
-    + anti-hallucination). `rag.clear_source(project_id, kind, id)` for Remember
-    dedup.
-  - `LlmGateway` (llm.py) — streaming wrapper over `langchain_openai.ChatOpenAI`;
-    model = `OPENAI_CHAT_MODEL or OPENAI_MODEL`; writes one `LlmUsage` row per
-    call. New setting `openai_chat_model`.
-  - `backend/app/runtime/` — app-owned orchestrator (NOT deepagents/langgraph):
-    `contracts.py` (AgentName, RunMode, RunContext, HandoffTarget, CAPABILITIES
-    allow-list) + `orchestrator.py` (Orchestrator, GatedServices proxy,
-    CapabilityError, trace recording, mediated handoff — unused this slice).
-  - `repositories/trace.py` — `start_run` / `record_step` / `finish_run` /
-    `get_run` / `list_steps` live.
-  - `agents/user_chat.py` — DETERMINISTIC pipeline: retrieve ALWAYS first; empty
-    context → fixed "not in knowledge base" message, ZERO LLM calls; else grounded
-    prompt (numbered passages + last 10 history msgs) → stream → citations.
-  - `routers/chat.py` — `POST /projects/{id}/chat` (SSE: meta→token\*→citations→
-    done/error), conversations list + messages, Remember endpoint. JWT +
-    `require_project_access` + per-user ownership.
-  - `Conversation.project_id` FK (NOT NULL, indexed) — conversations project-scoped
-    and private.
-  - Frontend: real SSE chat (`ChatScreen.tsx`), Remember button (`ChatMessage.tsx`),
-    resumable history, `lib/chat-stream.ts`, chat methods in `lib/api.ts`. tsc clean.
+- **Code-review fixes for live chat** (ScrumAgent-5t3):
+  - `/chat?seed=...` waits for a real active project before consuming/sending the
+    seed, so Home Ask Agent links no longer get dropped during project load.
+  - Active project changes cancel in-flight streams and reset `conversationIdRef`,
+    active session, messages, input, and streaming state. A message sent in
+    project B no longer carries project A's `conversation_id`.
+  - `lib/chat-stream.ts` now mirrors the shared API client's 401 behavior:
+    clear auth storage and redirect to `/login` when a chat SSE POST rejects an
+    expired token.
+  - `append_message()` bumps the parent `Conversation.updated_at`, so the
+    history pane sorts conversations by recent activity.
+  - `wiki/flows/chat.md` now matches the actual SSE contract:
+    `meta {conversation_id, run_id}`, `token {delta}`, `citations {items}`,
+    `done {message_id}`; Remember uses source kind `note`.
 
-- **RAG re-sync race fix** (srp, 2026-06-18): `RagClient` now coordinates with
-  LightRAG's single-flight pipeline via `pipeline_status` polling + busy/409
-  retries. 216 backend tests green.
+- **user_chat RAG streaming chat** (r0k / 2jb): `POST /projects/{id}/chat`
+  streams meta→token*→citations→done/error. Conversations are private per user
+  and project-scoped. Remember dedups via `clear_source(project_id, "note",
+  message_id)` then indexes Q+A back into LightRAG.
 
-- **RAG auto-sync + live KB tab** (bah): `IngestionTrigger.auto`,
-  `Project.auto_sync_enabled`, `AutoSyncScheduler` asyncio loop (6h cadence).
-  Knowledge base settings tab fully live (sources, health, toggle, Sync now).
+- **RAG retrieve + LLM gateway + app-owned orchestrator**: `RagClient.retrieve`
+  calls LightRAG `/query` and post-filters to `"{project_id}::"` references;
+  `LlmGateway` streams OpenAI chat responses and records usage; `runtime/`
+  enforces the user_chat allow-list (`rag.retrieve`, `llm`) and trace recording.
 
-- **Backlog ingestion** (lcw): `RagClient` write path, Jira/Notion read clients,
-  `IngestionRun` + runner, create-time trigger.
+- **LightRAG single-flight fix** (srp): `RagClient` coordinates clear/index with
+  `pipeline_status` polling and busy/409 retries.
 
 ## Key Architecture Facts
 
 - Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker
-  Compose for Municorn (`@municorn.com`); second target = single GCE VM.
-- Services: `backend` (FastAPI), `frontend` (Next.js 14), `lightrag` (v1.5.3,
-  port 9621), `postgres`.
-- RAG boundary: all code calls only `backend/app/rag.py`.
-- **RAG: write + retrieve now live.** `RagClient` = `index_documents`,
-  `clear_project`, `status`, `retrieve`, `clear_source`. Project isolation =
-  `file_source` tag `"{project_id}::{kind}::{id}"`, reference-level only (shared
-  graph, `o39`). `index_meeting` still planned (`o39`).
-- **Orchestrator is app-owned, NOT deepagents/langgraph.** Deterministic pipeline
-  for user_chat. Handoff mechanism wired but unused until real `jira_notion`
-  handoff lands. ADR: `decisions/2026-06-18-app-owned-orchestrator-not-deepagents-lib`.
-- **Chat is live.** SSE event contract: meta→token\*→citations→done/error.
-  Conversations private (per user) and project-scoped. Remember writes Q+A back
-  into the index (clear_source dedup + index_documents).
-- **Anti-hallucination guarantee by construction:** `user_chat` pipeline is
-  deterministic — empty context → zero LLM calls; no answer generated outside
-  retrieved passages.
+  Compose; cloud target is one GCE VM.
+- Services: `backend` (FastAPI), `frontend` (Next.js 14), `lightrag` v1.5.3,
+  and PostgreSQL storage for LightRAG.
+- RAG boundary: app code calls only `backend/app/rag.py`. Project isolation is
+  reference-level via `file_source = "{project_id}::{kind}::{id}"`; the graph is
+  still shared until `o39` true isolation work.
+- `user_chat` is deterministic, not a tool loop: retrieve first; empty context
+  returns the fixed knowledge-base miss message with zero LLM calls; non-empty
+  context streams a grounded answer from numbered passages.
+- Orchestrator is app-owned, not deepagents/langgraph. Handoff mechanism exists
+  but is unused in the current user_chat slice.
 
 ## Local dev environment
 
-- Backend: local uvicorn (`backend/.venv`, port 8000); tests:
-  `cd backend && .venv/bin/python -m pytest -q` (245 green).
-- Frontend: `npm --prefix apps/web run dev`. Typecheck: `npm --prefix apps/web run
-  typecheck`. e2e: `npx playwright test` (route-mocked; auto-boots dev server).
+- Backend tests: `cd backend && uv run pytest -q`.
+- Frontend: `cd apps/web && npm run typecheck`; e2e via `npx playwright test`
+  with route-mocked backend and auto-started Next dev server.
+- `next lint` has been interactive/unhelpful in this environment; prefer
+  typecheck/build/Playwright for current frontend gates.
 
 ## Open threads
 
-- **Live e2e (`ScrumAgent-uzx`):** chat not yet tested against Docker/LightRAG/
-  OpenAI stack. Must confirm SSE streaming + RAG retrieve + OpenAI chat model work
-  end-to-end.
-- **No live Jira/Notion handoff:** orchestrator handoff mechanism exists but
-  `user_chat` only uses RAG context this slice.
-- **`index_meeting` (`o39`):** meeting artifacts not yet indexed; knowledge base
-  is Jira/Notion-only.
-- **Shared LightRAG graph (`o39`):** project isolation is reference-level only
-  (file_source prefix). True graph isolation is deferred.
-- **No Alembic (`soe`):** `Conversation.project_id` and other new columns added by
-  `create_all` only — existing dev/prod DBs may need `ALTER TABLE`.
-- **Multi-worker caveat:** auto-sync loop runs per uvicorn worker; horizontal
-  scaling needs an external cron / DB lock.
-- **Mock data** still drives meeting detail, pending updates, trace UI (`r0k`
-  follow-ups).
+- Live chat e2e against Docker/LightRAG/OpenAI still needs a real-stack pass.
+- No live Jira/Notion handoff yet; user_chat answers only from RAG context.
+- `index_meeting` is still planned; meeting artifacts are not indexed yet.
+- Existing dev/prod DBs may need manual schema migration because Alembic is not
+  present.
+- Some shell screens still use mock data: meeting detail, pending updates, trace
+  UI follow-ups.

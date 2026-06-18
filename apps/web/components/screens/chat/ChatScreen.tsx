@@ -127,6 +127,7 @@ export function ChatScreen(): JSX.Element {
   const generationRef = useRef<number>(0);
   // Tracks the current conversation id across the session.
   const conversationIdRef = useRef<string | null>(null);
+  const projectIdRef = useRef<string>(projectId);
 
   const cancelStreaming = useCallback((): void => {
     generationRef.current += 1;
@@ -163,6 +164,19 @@ export function ChatScreen(): JSX.Element {
   useEffect(() => {
     loadConversations();
   }, [loadConversations]);
+
+  // A project switch must not carry over the previous project's conversation
+  // id or persisted assistant message ids.
+  useEffect(() => {
+    if (projectIdRef.current === projectId) return;
+    projectIdRef.current = projectId;
+    cancelStreaming();
+    conversationIdRef.current = null;
+    setActiveSessionId(null);
+    setMessages(CHAT_SEED);
+    setInput("");
+    setStreaming(false);
+  }, [projectId, cancelStreaming]);
 
   const send = useCallback(
     (text: string): void => {
@@ -274,21 +288,20 @@ export function ChatScreen(): JSX.Element {
     [cancelStreaming, projectId, noProject, loadConversations],
   );
 
-  // Seed query auto-send: read once on mount.
+  // Seed query auto-send: read once, but wait until the project context is ready.
   const searchParams = useSearchParams();
   const sentSeedRef = useRef<boolean>(false);
   useEffect(() => {
     if (sentSeedRef.current) return;
-    const seed = searchParams?.get("seed");
-    if (seed && seed.trim()) {
+    const seed = searchParams?.get("seed")?.trim();
+    if (!seed) {
       sentSeedRef.current = true;
-      send(seed);
-    } else {
-      sentSeedRef.current = true;
+      return;
     }
-    // We intentionally only run this once per mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (noProject) return;
+    sentSeedRef.current = true;
+    send(seed);
+  }, [noProject, searchParams, send]);
 
   const submit = useCallback((): void => {
     if (input.trim() && !streaming) send(input.trim());

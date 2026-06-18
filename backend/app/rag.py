@@ -51,6 +51,29 @@ class RagStatus:
     by_source_kind: dict[str, int] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class Citation:
+    source_kind: str
+    source_id: str
+    title: str | None = None
+    source_uri: str | None = None
+
+
+@dataclass
+class RetrievedPassage:
+    text: str
+    score: float
+    citation: Citation
+
+
+def _parse_citation(file_path: str) -> Citation | None:
+    """`file_path` is "{project_id}::{kind}::{id}"; None if it has no usable kind/id."""
+    parts = file_path.split("::")
+    if len(parts) < 3 or not parts[1] or not parts[2]:
+        return None
+    return Citation(source_kind=parts[1], source_id=parts[2])
+
+
 def _file_source(project_id: str, doc: RagDocument) -> str:
     return f"{project_id}::{doc.source_kind}::{doc.source_id}"
 
@@ -237,3 +260,43 @@ class RagClient:
         return RagStatus(
             total=total, by_status=by_status, by_source_kind=by_source_kind
         )
+
+    async def retrieve(
+        self, project_id: str, question: str, *, k: int = 6
+    ) -> list["RetrievedPassage"]:
+        """Project-scoped retrieval. Returns passages whose provenance is inside
+        this project; cross-project and uncited hits are dropped (no leakage)."""
+        prefix = f"{project_id}::"
+        try:
+            async with self._client_factory() as client:
+                resp = await client.post(
+                    f"{self._base}/query",
+                    params=self._params(),
+                    json={
+                        "query": question,
+                        "mode": "mix",
+                        "top_k": k,
+                        "only_need_context": True,
+                    },
+                )
+                resp.raise_for_status()
+                chunks = (resp.json().get("data") or {}).get("chunks") or []
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            raise RagError(f"retrieve failed: {exc}") from exc
+
+        passages: list[RetrievedPassage] = []
+        for chunk in chunks:
+            file_path = str(chunk.get("file_path", ""))
+            if not file_path.startswith(prefix):
+                continue
+            citation = _parse_citation(file_path)
+            if citation is None:
+                continue
+            passages.append(
+                RetrievedPassage(
+                    text=str(chunk.get("content", "")),
+                    score=float(chunk.get("score", 0.0)),
+                    citation=citation,
+                )
+            )
+        return passages

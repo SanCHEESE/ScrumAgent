@@ -4,7 +4,7 @@ import asyncio
 
 import httpx
 
-from app.rag import IndexResult, RagClient, RagDocument, RagError, RagStatus
+from app.rag import Citation, IndexResult, RagClient, RagDocument, RagError, RagStatus, RetrievedPassage
 
 
 def _client(handler, *, api_key=None) -> RagClient:
@@ -322,3 +322,56 @@ def test_clear_project_drains_pipeline_before_returning():
     # clear must poll pipeline_status AFTER the last delete (drain) before returning.
     last_delete = len(fake.events) - 1 - fake.events[::-1].index("delete_document")
     assert "pipeline_status" in fake.events[last_delete + 1 :]
+
+
+# --- Retrieve (read side) ---
+
+
+def _query_handler(chunks):
+    """Serve POST /query (context-only) returning the given chunk dicts."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/query"
+        import json
+        body = json.loads(httpx.Request("POST", request.url, content=request.content).read())
+        assert body["only_need_context"] is True
+        assert body["top_k"] == 4
+        return httpx.Response(200, json={"data": {"chunks": chunks}})
+    return handler
+
+
+def test_retrieve_returns_passages_with_parsed_citations():
+    chunks = [
+        {"content": "Login fails on mobile.", "file_path": "proj-1::jira::PLAT-12", "score": 0.91},
+        {"content": "Release notes v2.", "file_path": "proj-1::notion::page-7", "score": 0.72},
+    ]
+    out = asyncio.run(_client(_query_handler(chunks)).retrieve("proj-1", "why login fails", k=4))
+    assert [type(p) for p in out] == [RetrievedPassage, RetrievedPassage]
+    assert out[0].text == "Login fails on mobile."
+    assert out[0].score == 0.91
+    assert out[0].citation == Citation(source_kind="jira", source_id="PLAT-12", title=None, source_uri=None)
+    assert out[1].citation.source_kind == "notion"
+
+
+def test_retrieve_drops_cross_project_and_uncited_hits():
+    chunks = [
+        {"content": "mine", "file_path": "proj-1::jira::A", "score": 0.9},
+        {"content": "other project", "file_path": "proj-2::jira::B", "score": 0.95},
+        {"content": "no provenance", "file_path": "", "score": 0.8},
+    ]
+    out = asyncio.run(_client(_query_handler(chunks)).retrieve("proj-1", "q", k=4))
+    assert [p.text for p in out] == ["mine"]
+
+
+def test_retrieve_empty_on_no_hits():
+    out = asyncio.run(_client(_query_handler([])).retrieve("proj-1", "q", k=4))
+    assert out == []
+
+
+def test_retrieve_raises_ragerror_on_http_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"detail": "boom"})
+    try:
+        asyncio.run(_client(handler).retrieve("proj-1", "q"))
+        raise AssertionError("expected RagError")
+    except RagError:
+        pass

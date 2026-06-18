@@ -11,35 +11,48 @@ from app.models.types import RunStatus, StepKind
 from app.repositories import trace as trace_repo
 from app.runtime.contracts import CAPABILITIES, AgentName, RunContext
 
+# Mediated handoffs allowed between agents (the only legal agent transitions).
+_ALLOWED_HANDOFFS = frozenset({
+    (AgentName.user_chat, AgentName.jira_notion),
+    (AgentName.meeting_participation, AgentName.jira_notion),
+    (AgentName.jira_notion, AgentName.user_chat),
+})
+
 
 class CapabilityError(RuntimeError):
     """An agent reached for a capability outside its allow-list."""
 
 
 class _GatedRag:
-    """RAG handle that exposes only the methods the agent is allowed to use."""
+    """RAG handle exposing only the capabilities allow-listed for one agent.
+    It is a narrow proxy (allowlist), not a filtered view of RagClient — methods
+    the agent isn't granted simply don't exist or raise CapabilityError."""
     def __init__(self, rag, allowed: set[str]):
         self._rag = rag
         self._allowed = allowed
 
     async def retrieve(self, *args, **kwargs):
         if "rag.retrieve" not in self._allowed:
-            raise CapabilityError("rag.retrieve not allowed")
+            raise CapabilityError("rag.retrieve not allowed for this agent")
         return await self._rag.retrieve(*args, **kwargs)
 
-    def index_documents(self, *args, **kwargs):
-        raise CapabilityError("rag.index not allowed for this agent")
+    async def index_documents(self, *args, **kwargs):
+        if "rag.index" not in self._allowed:
+            raise CapabilityError("rag.index not allowed for this agent")
+        return await self._rag.index_documents(*args, **kwargs)
 
 
 class GatedServices:
     def __init__(self, *, rag, llm, allowed: set[str]):
         self.rag = _GatedRag(rag, allowed)
         self.llm = llm if "llm" in allowed else None
-        self._allowed = allowed
 
 
 class Orchestrator:
     def __init__(self, *, llm, rag, trace_factory: Callable[[], Session]):
+        """trace_factory returns the Session to record into; in production it is
+        the per-request session (so trace + chat commit together), in tests the
+        fixture session."""
         self._llm = llm
         self._rag = rag
         self._trace_factory = trace_factory
@@ -67,11 +80,6 @@ class Orchestrator:
     async def dispatch_handoff(self, frm: AgentName, to: AgentName, payload: dict):
         """Mediated handoff (mechanism only; unused in the chat slice). Records a
         handoff step; raises if the transition is not in the allowed matrix."""
-        allowed = {
-            (AgentName.user_chat, AgentName.jira_notion),
-            (AgentName.meeting_participation, AgentName.jira_notion),
-            (AgentName.jira_notion, AgentName.user_chat),
-        }
-        if (frm, to) not in allowed:
+        if (frm, to) not in _ALLOWED_HANDOFFS:
             raise CapabilityError(f"handoff {frm.value}->{to.value} not allowed")
         self.record(payload["run_id"], frm, StepKind.handoff, {"to": to.value}, None)

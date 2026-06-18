@@ -279,6 +279,29 @@ export interface AutoSyncSetting {
   next_sync_at: string | null;
 }
 
+export interface ChatCitation {
+  n: number;
+  source_kind: string;
+  source_id: string;
+  title: string | null;
+  source_uri: string | null;
+  score: number;
+}
+
+export interface ConversationRow {
+  id: string;
+  title: string | null;
+  updated_at: string;
+}
+
+export interface ChatMessageRow {
+  id: number;
+  role: "user" | "assistant" | "system" | "tool";
+  content: string;
+  meta: { citations?: ChatCitation[] } | null;
+  created_at: string;
+}
+
 export const api = {
   me: () => apiFetch<MeResponse>("/auth/me"),
   listUsers: () => apiFetch<DirectoryUser[]>("/users/directory"),
@@ -390,6 +413,19 @@ export const api = {
   testStoredIntegration: (projectId: string, provider: IntegrationProvider) =>
     apiFetch<TestResult>(
       `/projects/${encodeURIComponent(projectId)}/integrations/${provider}/test`,
+      { method: "POST" },
+    ),
+  listConversations: (projectId: string) =>
+    apiFetch<ConversationRow[]>(
+      `/projects/${encodeURIComponent(projectId)}/conversations`,
+    ),
+  getMessages: (projectId: string, conversationId: string) =>
+    apiFetch<ChatMessageRow[]>(
+      `/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/messages`,
+    ),
+  remember: (projectId: string, messageId: number) =>
+    apiFetch<{ track_id: string | null; status: string }>(
+      `/projects/${encodeURIComponent(projectId)}/chat/messages/${messageId}/remember`,
       { method: "POST" },
     ),
 };

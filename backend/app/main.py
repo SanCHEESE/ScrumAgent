@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db, make_engine
 from app.deps import get_settings
-from app.routers import auth, projects, users
+from app.routers import auth, chat, projects, users
 from app.security import crypto
 
 
@@ -63,6 +63,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(chat.router)
 app.include_router(projects.router)
 app.include_router(users.router)
 

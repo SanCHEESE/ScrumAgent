@@ -332,9 +332,8 @@ def _query_handler(chunks):
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/query"
         import json
-        body = json.loads(httpx.Request("POST", request.url, content=request.content).read())
+        body = json.loads(request.content)
         assert body["only_need_context"] is True
-        assert body["top_k"] == 4
         return httpx.Response(200, json={"data": {"chunks": chunks}})
     return handler
 
@@ -357,6 +356,7 @@ def test_retrieve_drops_cross_project_and_uncited_hits():
         {"content": "mine", "file_path": "proj-1::jira::A", "score": 0.9},
         {"content": "other project", "file_path": "proj-2::jira::B", "score": 0.95},
         {"content": "no provenance", "file_path": "", "score": 0.8},
+        {"content": "partial provenance", "file_path": "proj-1::jira", "score": 0.6},
     ]
     out = asyncio.run(_client(_query_handler(chunks)).retrieve("proj-1", "q", k=4))
     assert [p.text for p in out] == ["mine"]

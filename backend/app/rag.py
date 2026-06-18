@@ -263,7 +263,7 @@ class RagClient:
 
     async def retrieve(
         self, project_id: str, question: str, *, k: int = 6
-    ) -> list["RetrievedPassage"]:
+    ) -> list[RetrievedPassage]:
         """Project-scoped retrieval. Returns passages whose provenance is inside
         this project; cross-project and uncited hits are dropped (no leakage)."""
         prefix = f"{project_id}::"
@@ -295,6 +295,7 @@ class RagClient:
             passages.append(
                 RetrievedPassage(
                     text=str(chunk.get("content", "")),
+                    # missing score -> 0.0 keeps the passage ranked last rather than dropped
                     score=float(chunk.get("score", 0.0)),
                     citation=citation,
                 )

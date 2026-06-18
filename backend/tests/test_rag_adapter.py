@@ -19,6 +19,8 @@ def test_index_documents_posts_texts_with_file_source_tags():
     seen = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/documents/pipeline_status":
+            return httpx.Response(200, json={"busy": False, "request_pending": False})
         assert request.url.path == "/documents/texts"
         seen["body"] = httpx.Request("POST", request.url, content=request.content).read()
         import json
@@ -93,6 +95,8 @@ def _paginated_handler(documents, *, deleted):
     """Serve /documents/paginated (one page) and capture deletes."""
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/documents/pipeline_status":
+            return httpx.Response(200, json={"busy": False, "request_pending": False})
         if request.url.path == "/documents/paginated":
             return httpx.Response(
                 200,
@@ -107,7 +111,7 @@ def _paginated_handler(documents, *, deleted):
 
             body = json.loads(httpx.Request("DELETE", request.url, content=request.content).read())
             deleted.extend(body["doc_ids"])
-            return httpx.Response(200, json={"status": "ok"})
+            return httpx.Response(200, json={"status": "deletion_started"})
         raise AssertionError(f"unexpected path {request.url.path}")
 
     return handler
@@ -147,3 +151,174 @@ def test_status_counts_by_source_kind_for_project():
     status = asyncio.run(_client(_paginated_handler(docs, deleted=[])).status("proj-1"))
     # The kind is the middle segment of "{project_id}::{kind}::{id}".
     assert status.by_source_kind == {"jira": 2, "notion": 1}
+
+
+# --- Re-sync race against LightRAG's single-flight pipeline (ScrumAgent-srp) ---
+#
+# LightRAG processes deletes ASYNC: DELETE /documents/delete_document returns 200
+# with status="deletion_started" while the work keeps draining (busy=True), and
+# returns status="busy" (still 200!) when it could not even start. A POST insert
+# arriving while a delete drains gets HTTP 409. The adapter must poll
+# /documents/pipeline_status until busy=false and treat busy/409 as retryable.
+
+
+async def _noop_sleep(_seconds: float) -> None:
+    return None
+
+
+def _race_client(
+    handler, *, api_key=None, busy_retries=5, poll_interval=0.001, max_wait=0.05
+) -> RagClient:
+    return RagClient(
+        "http://lightrag:9621",
+        api_key=api_key,
+        client_factory=lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        poll_interval=poll_interval,
+        max_wait=max_wait,
+        busy_retries=busy_retries,
+        sleep=_noop_sleep,
+    )
+
+
+class _FakeLightRAG:
+    """Stateful mock of the v1.5.3 document pipeline for race tests.
+
+    - pipeline_status reports busy while ``pipeline_polls < _busy_until``.
+    - a delete reports status="busy" the first ``delete_busy_times`` calls, then
+      "deletion_started" and (modelling the async drain) keeps the pipeline busy
+      for ``drain_polls`` subsequent status reads.
+    - an insert returns 409 the first ``insert_409_times`` calls, then 200.
+    """
+
+    def __init__(
+        self,
+        *,
+        documents=None,
+        initial_busy_polls=0,
+        drain_polls=0,
+        delete_busy_times=0,
+        insert_409_times=0,
+    ):
+        self.documents = documents or []
+        self.drain_polls = drain_polls
+        self.delete_busy_times = delete_busy_times
+        self.insert_409_times = insert_409_times
+        self._busy_until = initial_busy_polls
+        self.pipeline_polls = 0
+        self.delete_calls = 0
+        self.insert_calls = 0
+        self.deleted: list[str] = []
+        self.events: list[str] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        import json
+
+        path = request.url.path
+        self.events.append(path.rsplit("/", 1)[-1])
+
+        if path == "/documents/pipeline_status":
+            busy = self.pipeline_polls < self._busy_until
+            self.pipeline_polls += 1
+            return httpx.Response(200, json={"busy": busy, "request_pending": False})
+
+        if path == "/documents/paginated":
+            return httpx.Response(
+                200,
+                json={
+                    "documents": self.documents,
+                    "pagination": {"total_pages": 1},
+                    "status_counts": {},
+                },
+            )
+
+        if path == "/documents/delete_document":
+            self.delete_calls += 1
+            if self.delete_calls <= self.delete_busy_times:
+                return httpx.Response(
+                    200,
+                    json={"status": "busy", "message": "pipeline busy", "doc_id": ""},
+                )
+            body = json.loads(
+                httpx.Request("DELETE", request.url, content=request.content).read()
+            )
+            self.deleted.extend(body["doc_ids"])
+            # deletion now drains asynchronously: pipeline stays busy a while.
+            self._busy_until = self.pipeline_polls + self.drain_polls
+            return httpx.Response(
+                200,
+                json={"status": "deletion_started", "message": "ok", "doc_id": ""},
+            )
+
+        if path == "/documents/texts":
+            self.insert_calls += 1
+            if self.insert_calls <= self.insert_409_times:
+                return httpx.Response(
+                    409, json={"detail": "Pipeline is clearing or deleting documents."}
+                )
+            return httpx.Response(
+                200, json={"status": "success", "message": "queued", "track_id": "trk-1"}
+            )
+
+        raise AssertionError(f"unexpected path {path}")
+
+
+def test_index_documents_retries_on_409_until_pipeline_accepts():
+    fake = _FakeLightRAG(insert_409_times=2)
+    docs = [RagDocument(text="x", source_kind="jira", source_id="K-1", title="t", source_uri="u")]
+    result = asyncio.run(_race_client(fake).index_documents("proj-1", docs))
+    assert result.submitted == 1
+    assert result.track_id == "trk-1"
+    assert fake.insert_calls == 3  # 409, 409, then 200
+
+
+def test_index_documents_raises_after_persistent_409():
+    fake = _FakeLightRAG(insert_409_times=99)
+    docs = [RagDocument(text="x", source_kind="jira", source_id="K-1", title="t", source_uri="u")]
+    try:
+        asyncio.run(_race_client(fake, busy_retries=3).index_documents("proj-1", docs))
+        raise AssertionError("expected RagError after exhausting 409 retries")
+    except RagError:
+        pass
+    assert fake.insert_calls == 4  # initial attempt + 3 retries
+
+
+def test_index_documents_waits_for_pipeline_idle_before_posting():
+    # Pipeline busy for the first two status reads, then idle.
+    fake = _FakeLightRAG(initial_busy_polls=2)
+    docs = [RagDocument(text="x", source_kind="jira", source_id="K-1", title="t", source_uri="u")]
+    result = asyncio.run(_race_client(fake).index_documents("proj-1", docs))
+    assert result.submitted == 1
+    assert fake.pipeline_polls >= 3  # waited out the busy window before inserting
+    # the insert happened only after the pipeline reported idle
+    assert fake.events.index("texts") > fake.events.index("pipeline_status")
+
+
+def test_index_documents_times_out_when_pipeline_never_idle():
+    fake = _FakeLightRAG(initial_busy_polls=10_000)
+    docs = [RagDocument(text="x", source_kind="jira", source_id="K-1", title="t", source_uri="u")]
+    try:
+        asyncio.run(_race_client(fake, poll_interval=0.001, max_wait=0.005).index_documents("proj-1", docs))
+        raise AssertionError("expected RagError when pipeline never idles")
+    except RagError:
+        pass
+    assert fake.insert_calls == 0  # never posted into a busy pipeline
+
+
+def test_clear_project_retries_busy_delete_instead_of_dropping_batch():
+    docs = [{"id": "doc-a", "file_path": "proj-1::jira::A", "status": "processed"}]
+    fake = _FakeLightRAG(documents=docs, delete_busy_times=2)
+    count = asyncio.run(_race_client(fake).clear_project("proj-1"))
+    assert count == 1
+    assert fake.deleted == ["doc-a"]  # NOT silently dropped on status="busy"
+    assert fake.delete_calls == 3  # busy, busy, then deletion_started
+
+
+def test_clear_project_drains_pipeline_before_returning():
+    docs = [{"id": "doc-a", "file_path": "proj-1::jira::A", "status": "processed"}]
+    # After the delete is accepted the pipeline stays busy for 3 status reads.
+    fake = _FakeLightRAG(documents=docs, drain_polls=3)
+    asyncio.run(_race_client(fake).clear_project("proj-1"))
+    assert fake.deleted == ["doc-a"]
+    # clear must poll pipeline_status AFTER the last delete (drain) before returning.
+    last_delete = len(fake.events) - 1 - fake.events[::-1].index("delete_document")
+    assert "pipeline_status" in fake.events[last_delete + 1 :]

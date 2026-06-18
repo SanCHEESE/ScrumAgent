@@ -70,6 +70,14 @@ class Settings(BaseSettings):
     rag_auto_sync_interval_hours: float = 6.0  # fixed cadence (not per-project)
     rag_auto_sync_tick_seconds: float = 300.0  # how often the loop re-checks
 
+    # --- RAG pipeline coordination (LightRAG is single-flight; ScrumAgent-srp) ---
+    # Re-sync clears then re-inserts; LightRAG drains deletes asynchronously and
+    # rejects overlapping work (delete status="busy" / insert HTTP 409). The
+    # adapter polls /documents/pipeline_status until idle and retries busy ops.
+    rag_pipeline_poll_seconds: float = 1.0  # interval between pipeline_status polls
+    rag_pipeline_max_wait_seconds: float = 120.0  # give up waiting for idle after this
+    rag_pipeline_busy_retries: int = 5  # retries when a delete/insert reports busy/409
+
     # --- GCP deploy (optional) ---
     gcp_project_id: str | None = None
     gcp_region: str | None = None

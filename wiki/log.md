@@ -2,13 +2,36 @@
 type: meta
 title: "Wiki Log"
 created: 2026-05-10
-updated: 2026-06-17
+updated: 2026-06-18
 tags: [meta, log]
 ---
 
 # Wiki Log
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
+
+## 2026-06-18 — Fix RAG re-sync race vs LightRAG single-flight pipeline (ScrumAgent-srp)
+
+Fixed the re-sync race found live in the `bah` full-stack test (308 docs → only 100
+deleted, insert 409'd, run failed). Verified the exact v1.5.3 REST contract from the
+pinned image source (`document_routes.py`): deletes run async and the pipeline is
+single-flight, so `DELETE /documents/delete_document` returns `200
+{status:"deletion_started"}` while draining and `200 {status:"busy"}` when it
+scheduled nothing (not an HTTP error — our old code's `raise_for_status()` treated a
+busy delete as success → the partial-delete symptom), while `POST /documents/texts`
+returns **409** during a drain. `_acquire/_release_destructive_busy` couple
+`pipeline_status.busy` with `destructive_busy`, so polling `GET
+/documents/pipeline_status` until `busy=false` reliably means a clear has drained.
+
+`RagClient` ([[modules/rag]]) now: polls for idle before each delete batch and
+**retries** a `status:"busy"` delete; drains after `clear_project`; waits for idle
+before each insert and **retries on 409**. Bounded by new settings
+`RAG_PIPELINE_POLL_SECONDS` (1) / `RAG_PIPELINE_MAX_WAIT_SECONDS` (120) /
+`RAG_PIPELINE_BUSY_RETRIES` (5); a `sleep` seam is injected for fast tests. Timeout
+surfaces a `RagError` (hard, visible run failure) rather than a silent partial sync.
+TDD with a stateful `MockTransport` fake modelling busy→idle, delete-busy→accepted,
+and 409→200. 6 new adapter tests; 2 pre-existing handlers updated for the new poll;
+**216 backend tests green**. Not re-verified against a live stack (docker down).
 
 ## 2026-06-17 — Full-stack RAG indexing verification (live, ScrumAgent-bah)
 

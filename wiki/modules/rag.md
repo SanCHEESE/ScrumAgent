@@ -5,7 +5,7 @@ path: "backend/app/rag.py"
 language: python
 status: partial
 created: 2026-05-10
-updated: 2026-06-17
+updated: 2026-06-18
 depends_on: [llm-gateway]
 used_by: [runtime-orchestrator]
 tags: [module, rag]
@@ -42,6 +42,8 @@ Backend settings stay app-level:
 - `LIGHTRAG_WORKSPACE=scrumagent`
 - `LIGHTRAG_TIMEOUT_SECONDS=10`
 - optional `LIGHTRAG_API_KEY`
+- `RAG_PIPELINE_POLL_SECONDS=1` / `RAG_PIPELINE_MAX_WAIT_SECONDS=120` /
+  `RAG_PIPELINE_BUSY_RETRIES=5` — single-flight pipeline coordination (see API surface)
 
 LightRAG storage settings (`PGKVStorage`, `PGVectorStorage`, `PGGraphStorage`,
 `PGDocStatusStorage`, and `POSTGRES_*`) are container-side deployment config, not
@@ -68,6 +70,26 @@ project isolation is encoded in the `file_source` field:
 `"{project_id}::{source_kind}::{source_id}"`. This is a reference-level tag, not a
 graph-level boundary — the knowledge graph itself is shared across projects (known
 limitation, tracked as `ScrumAgent-o39`).
+
+**Single-flight pipeline coordination (`ScrumAgent-srp`):** LightRAG's document
+pipeline is single-flight and drains deletes asynchronously. `DELETE
+/documents/delete_document` returns `200 {status:"deletion_started"}` while work is
+still draining (and `200 {status:"busy"}` — *not* an HTTP error — when it scheduled
+nothing); a `POST /documents/texts` arriving while a delete drains gets `HTTP 409`.
+`_acquire/_release_destructive_busy` couple `pipeline_status.busy` with
+`destructive_busy`, so the adapter polls `GET /documents/pipeline_status` until
+`busy=false` to know a clear has fully drained. The client therefore:
+
+- waits for idle before every delete batch and **retries** a `status:"busy"` delete
+  (so re-syncs no longer silently drop batches — the original symptom was 308 docs
+  but only 100 deleted);
+- waits for the deletes to drain after `clear_project` returns;
+- waits for idle before each insert and **retries on 409**, bounded by
+  `RAG_PIPELINE_BUSY_RETRIES`.
+
+Polling is bounded by `RAG_PIPELINE_POLL_SECONDS` / `RAG_PIPELINE_MAX_WAIT_SECONDS`;
+exceeding the wait surfaces a `RagError` (a hard, visible run failure) rather than a
+partial sync.
 
 ### Planned
 

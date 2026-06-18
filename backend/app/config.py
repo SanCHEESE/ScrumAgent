@@ -33,6 +33,9 @@ class Settings(BaseSettings):
 
     # --- core defaults ---
     openai_model: str = "gpt-5.4-mini"
+    # Chat composition can run a cheaper model than the default; falls back to
+    # openai_model when unset. Lets us drop to a cheaper tier without code.
+    openai_chat_model: str | None = None
     allowed_domain: str = "municorn.com"
     jwt_ttl_hours: int = 24
     app_environment: Literal["production", "agent_preview"] = "production"

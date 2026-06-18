@@ -37,7 +37,7 @@ busy after 120s`. Two linked root causes, both fixed:
    genuinely-down LightRAG still surfaces. New `pipeline_busy()` adapter method.
 
 Recovery: used LightRAG `POST /documents/reprocess_failed` (re-processes only the 493
-FAILED docs, no re-fetch, no full wipe). Tests: 255 backend green (+3 new); web tsc
+FAILED docs, no re-fetch, no full wipe). Tests: 252 backend green (+5 new); web tsc
 clean. Touches `rag.py`, `ingestion.py`, `models/types.py`, `KnowledgeBaseSection.tsx`,
 `docker-compose.yml`, `.env.example`. Follow-up to `ScrumAgent-srp`.
 

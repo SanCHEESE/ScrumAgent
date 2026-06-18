@@ -15,7 +15,7 @@ LightRAG embedding throughput guard (compose env: concurrency 8→2, embedding
 timeout 30→180s) so a large backlog stops blowing the 60s embedding worker
 timeout; (2) `execute_run` now defers a resync/auto run (new
 `IngestionStatus.deferred`) when LightRAG is busy with another job, instead of
-hard-failing after a 120s wait. Verified: **255 backend tests green**, web tsc
+hard-failing after a 120s wait. Verified: **252 backend tests green** (+5), web tsc
 clean; live reprocess of the 493 failed eSIM docs ran with zero 60s timeouts.
 
 ## What just shipped (newest first)

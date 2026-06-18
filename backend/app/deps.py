@@ -97,6 +97,34 @@ def get_ingestion_runner(
     return IngestionRunner(settings, _session_factory())
 
 
+def get_rag_client(settings: Settings = Depends(get_settings)) -> "RagClient":
+    from app.rag import RagClient
+    return RagClient.from_settings(settings)
+
+
+def get_llm_gateway(settings: Settings = Depends(get_settings)) -> "LlmGateway":
+    from app.llm import LlmGateway
+    return LlmGateway.from_settings(settings)
+
+
+def get_orchestrator(
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_db),
+) -> "Orchestrator":
+    """Orchestrator wired to RAG + LLM, sharing the request DB session so trace
+    runs/steps commit in the same transaction as the chat messages. trace_factory
+    returns that per-request session."""
+    from app.llm import LlmGateway
+    from app.rag import RagClient
+    from app.runtime.orchestrator import Orchestrator
+
+    return Orchestrator(
+        llm=LlmGateway.from_settings(settings),
+        rag=RagClient.from_settings(settings),
+        trace_factory=lambda: db,
+    )
+
+
 _bearer = HTTPBearer(auto_error=False)
 PREVIEW_GOOGLE_SUB = "dev-sub"
 PREVIEW_EMAIL = "dev@municorn.com"

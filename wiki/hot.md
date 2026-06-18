@@ -8,84 +8,75 @@ tags: [meta, hot-cache]
 # Recent Context
 
 ## Last Updated
-2026-06-18. **Hardened RAG sync against a busy/overloaded LightRAG pipeline**
-(`ScrumAgent-vw3`), found by debugging a live eSIM-project error
-`clear_project failed: LightRAG pipeline still busy after 120s`. Two fixes: (1)
-LightRAG embedding throughput guard (compose env: concurrency 8→2, embedding
-timeout 30→180s) so a large backlog stops blowing the 60s embedding worker
-timeout; (2) `execute_run` now defers a resync/auto run (new
-`IngestionStatus.deferred`) when LightRAG is busy with another job, instead of
-hard-failing after a 120s wait. Verified: **252 backend tests green** (+5), web tsc
-clean; live reprocess of the 493 failed eSIM docs ran with zero 60s timeouts.
+2026-06-18. **Added a periodic RAG auto-heal** (`ScrumAgent-clo`), built in response to
+the user's pushback on the `vw3` recovery plan: *why a (clean) resync at all — why not
+just re-sync the failed issues in place and not report an error?* Correct instinct.
+LightRAG's `POST /documents/reprocess_failed` re-embeds only FAILED docs **in place** (no
+wipe, no Jira/Notion re-fetch) — the cheap recovery a destructive resync is not for. The
+auto-sync scheduler now does this automatically. TDD: **269 backend tests green** (+17).
 
 ## What just shipped (newest first)
 
+- **RAG auto-heal** (ScrumAgent-clo): each auto-sync tick, when the LightRAG pipeline is
+  idle and the **instance-wide** FAILED count (`RagClient.failed_count()`) is > 0, the
+  scheduler calls `RagClient.reprocess_failed()` (re-embed in place). A tick that heals
+  skips resync scheduling (pipeline now busy). `decide_heal` (pure) bounds it: keep
+  healing while FAILED drops, give up after `rag_heal_max_attempts` (default 3)
+  no-progress rounds so a permanently-failing backend (e.g. `x0f` no-access) can't hammer
+  OpenAI forever — those docs stay visible in the health `failed` count. `heal_failed_docs`
+  swallows `RagError` (a blip can't kill the tick). Scheduler takes an injected `rag`
+  collaborator (None ⇒ heal off). `reprocess_failed`/`status_counts` are instance-wide.
+  Destructive resync stays only for Jira/Notion **edit** pickup. See [[modules/rag]],
+  [[flows/backlog-ingestion]]; spec `docs/superpowers/specs/2026-06-18-rag-auto-heal-design.md`.
+
 - **RAG sync hardening** (ScrumAgent-vw3): `RagClient.pipeline_busy()` probe +
-  defer-on-busy in `execute_run` (no more scary "Last sync error" / scheduler
-  retry-storm when an index is in flight); `IngestionStatus.deferred`; LightRAG
-  compose throughput knobs `LIGHTRAG_EMBEDDING_FUNC_MAX_ASYNC=2` /
-  `LIGHTRAG_EMBEDDING_TIMEOUT=180` / `LIGHTRAG_MAX_PARALLEL_INSERT=2`. Recovery via
-  LightRAG `POST /documents/reprocess_failed`. See [[flows/backlog-ingestion]],
-  [[modules/rag]]. **Root cause was NOT `x0f` (403 no-access)** — embeddings work,
-  they just timed out under the default 8-way concurrency on a 2626-doc backlog.
+  defer-on-busy in `execute_run` (`IngestionStatus.deferred`, no scary "Last sync error"
+  / scheduler retry-storm when an index is in flight); LightRAG compose throughput knobs
+  `LIGHTRAG_EMBEDDING_FUNC_MAX_ASYNC=2` / `LIGHTRAG_EMBEDDING_TIMEOUT=180` /
+  `LIGHTRAG_MAX_PARALLEL_INSERT=2`. Root cause was embedding overload (8-way concurrency
+  on a 2626-doc backlog tripping the 60s worker timeout → 493 FAILED), **not** `x0f`.
 
-- **Code-review fixes for live chat** (ScrumAgent-5t3):
-  - `/chat?seed=...` waits for a real active project before consuming/sending the
-    seed, so Home Ask Agent links no longer get dropped during project load.
-  - Active project changes cancel in-flight streams and reset `conversationIdRef`,
-    active session, messages, input, and streaming state. A message sent in
-    project B no longer carries project A's `conversation_id`.
-  - `lib/chat-stream.ts` now mirrors the shared API client's 401 behavior:
-    clear auth storage and redirect to `/login` when a chat SSE POST rejects an
-    expired token.
-  - `append_message()` bumps the parent `Conversation.updated_at`, so the
-    history pane sorts conversations by recent activity.
-  - `wiki/flows/chat.md` now matches the actual SSE contract:
-    `meta {conversation_id, run_id}`, `token {delta}`, `citations {items}`,
-    `done {message_id}`; Remember uses source kind `note`.
+- **Code-review fixes for live chat** (ScrumAgent-5t3): `/chat?seed=...` waits for an
+  active project; project switch cancels in-flight streams + resets conversation state;
+  `chat-stream.ts` mirrors the 401-redirect; `append_message()` bumps parent
+  `updated_at`; `wiki/flows/chat.md` matches the real SSE contract.
 
-- **user_chat RAG streaming chat** (r0k / 2jb): `POST /projects/{id}/chat`
-  streams meta→token*→citations→done/error. Conversations are private per user
-  and project-scoped. Remember dedups via `clear_source(project_id, "note",
-  message_id)` then indexes Q+A back into LightRAG.
+- **user_chat RAG streaming chat** (r0k / 2jb): `POST /projects/{id}/chat` streams
+  meta→token*→citations→done/error; private per-user, project-scoped; Remember dedups via
+  `clear_source` then re-indexes Q+A.
 
-- **RAG retrieve + LLM gateway + app-owned orchestrator**: `RagClient.retrieve`
-  calls LightRAG `/query` and post-filters to `"{project_id}::"` references;
-  `LlmGateway` streams OpenAI chat responses and records usage; `runtime/`
-  enforces the user_chat allow-list (`rag.retrieve`, `llm`) and trace recording.
-
-- **LightRAG single-flight fix** (srp): `RagClient` coordinates clear/index with
-  `pipeline_status` polling and busy/409 retries.
+- **RAG retrieve + LLM gateway + app-owned orchestrator**: `RagClient.retrieve` →
+  LightRAG `/query`, post-filtered to `"{project_id}::"` references; `LlmGateway` streams
+  OpenAI; `runtime/` enforces the user_chat allow-list.
 
 ## Key Architecture Facts
 
-- Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker
-  Compose; cloud target is one GCE VM.
-- Services: `backend` (FastAPI), `frontend` (Next.js 14), `lightrag` v1.5.3,
-  and PostgreSQL storage for LightRAG.
+- Project: **Telecom Scrum Agent**, branded **Kabanchik**. Local-first Docker Compose;
+  cloud target is one GCE VM.
+- Services: `backend` (FastAPI; built image — **no source mount**, so code changes need
+  `docker compose up -d --build backend` to deploy), `frontend` (Next.js 14, bind-mounted),
+  `lightrag` v1.5.3, and PostgreSQL for LightRAG storage.
 - RAG boundary: app code calls only `backend/app/rag.py`. Project isolation is
-  reference-level via `file_source = "{project_id}::{kind}::{id}"`; the graph is
-  still shared until `o39` true isolation work.
-- `user_chat` is deterministic, not a tool loop: retrieve first; empty context
-  returns the fixed knowledge-base miss message with zero LLM calls; non-empty
-  context streams a grounded answer from numbered passages.
-- Orchestrator is app-owned, not deepagents/langgraph. Handoff mechanism exists
-  but is unused in the current user_chat slice.
+  reference-level via `file_source = "{project_id}::{kind}::{id}"`; the graph is shared
+  until `o39` true isolation. **`reprocess_failed`/`status_counts` are instance-wide** (no
+  project filter) → the auto-heal is one global op.
+- Backlog ingestion: `execute_run` clears-then-reindexes on resync/auto (LightRAG has no
+  upsert), defers on a busy pipeline; the scheduler now also auto-heals FAILED docs.
+- `user_chat` is deterministic: retrieve first; empty context → fixed miss message, zero
+  LLM calls; non-empty → grounded answer from numbered passages.
 
 ## Local dev environment
 
-- Backend tests: `cd backend && uv run pytest -q`.
-- Frontend: `cd apps/web && npm run typecheck`; e2e via `npx playwright test`
-  with route-mocked backend and auto-started Next dev server.
-- `next lint` has been interactive/unhelpful in this environment; prefer
-  typecheck/build/Playwright for current frontend gates.
+- Backend tests: `cd backend && uv run pytest -q` (**269 green**). No ruff in the uv env.
+- Frontend: `cd apps/web && npm run typecheck`; e2e via `npx playwright test`.
+- `next lint` is interactive/unhelpful here; prefer typecheck/build/Playwright.
 
 ## Open threads
 
+- Auto-heal is built + tested; deploy needs a `--build` of the backend container (built
+  image, no source mount). Heal is a no-op while live FAILED count is 0.
 - Live chat e2e against Docker/LightRAG/OpenAI still needs a real-stack pass.
-- No live Jira/Notion handoff yet; user_chat answers only from RAG context.
-- `index_meeting` is still planned; meeting artifacts are not indexed yet.
-- Existing dev/prod DBs may need manual schema migration because Alembic is not
-  present.
-- Some shell screens still use mock data: meeting detail, pending updates, trace
-  UI follow-ups.
+- No live Jira/Notion handoff yet; `index_meeting` still planned.
+- Alembic absent — existing dev/prod DBs may need manual schema migration.
+- OpenAI key was once printed to a transcript this session — rotate if that transcript
+  left the machine.

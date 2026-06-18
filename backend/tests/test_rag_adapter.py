@@ -432,3 +432,74 @@ def test_clear_source_deletes_only_exact_file_source():
     )
     assert count == 1
     assert deleted == ["a"]
+
+
+# --- Auto-heal: global failed-count probe + reprocess_failed (ScrumAgent-clo) ---
+#
+# reprocess_failed and status_counts are INSTANCE-WIDE (no project filter, no body —
+# verified live against /openapi.json). The auto-heal uses failed_count() to decide
+# whether to retry, and reprocess_failed() to re-embed failed docs in place.
+
+
+def test_failed_count_reads_global_status_counts():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/documents/status_counts"
+        return httpx.Response(
+            200, json={"status_counts": {"processed": 10, "failed": 3, "all": 13}}
+        )
+
+    assert asyncio.run(_client(handler).failed_count()) == 3
+
+
+def test_failed_count_zero_when_failed_key_absent():
+    def handler(request: httpx.Request) -> httpx.Response:
+        # LightRAG omits the "failed" key entirely when nothing has failed.
+        return httpx.Response(200, json={"status_counts": {"processed": 13, "all": 13}})
+
+    assert asyncio.run(_client(handler).failed_count()) == 0
+
+
+def test_failed_count_raises_ragerror_on_http_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={})
+
+    try:
+        asyncio.run(_client(handler).failed_count())
+        raise AssertionError("expected RagError")
+    except RagError:
+        pass
+
+
+def test_reprocess_failed_posts_endpoint():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        return httpx.Response(200, json={"status": "success", "message": "reprocessing"})
+
+    asyncio.run(_client(handler).reprocess_failed())
+    assert seen["method"] == "POST"
+    assert seen["path"] == "/documents/reprocess_failed"
+
+
+def test_reprocess_failed_applies_api_key():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["api_key"] = request.url.params.get("api_key_header_value")
+        return httpx.Response(200, json={"status": "success"})
+
+    asyncio.run(_client(handler, api_key="secret").reprocess_failed())
+    assert captured["api_key"] == "secret"
+
+
+def test_reprocess_failed_raises_ragerror_on_http_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"detail": "boom"})
+
+    try:
+        asyncio.run(_client(handler).reprocess_failed())
+        raise AssertionError("expected RagError")
+    except RagError:
+        pass

@@ -95,6 +95,12 @@ partial sync.
   calls it before a destructive resync/auto clear: if LightRAG is already busy with
   another job, the run is **deferred** instead of fighting the single-flight pipeline
   into a 120s timeout-then-`failed` (`ScrumAgent-vw3`; see [[flows/backlog-ingestion]]).
+- `failed_count()` / `reprocess_failed()` — **instance-wide**, no project filter:
+  `GET /documents/status_counts` → the global FAILED count, and
+  `POST /documents/reprocess_failed` → re-embed all FAILED docs **in place** (no wipe,
+  no Jira/Notion re-fetch). The auto-sync scheduler's **auto-heal** uses these to recover
+  transient embedding failures without a destructive resync (`ScrumAgent-clo`; see
+  [[flows/backlog-ingestion]]).
 
 **Embedding throughput (`ScrumAgent-vw3`):** LightRAG's defaults (8 concurrent
 embedding workers, 30s func / 60s worker timeout) overload OpenAI on a large backlog
@@ -102,8 +108,10 @@ embedding workers, 30s func / 60s worker timeout) overload OpenAI on a large bac
 (observed: 493/2626 docs failed on a 2626-doc Jira backlog). The `lightrag` compose
 service now defaults to `EMBEDDING_FUNC_MAX_ASYNC=2`, `EMBEDDING_TIMEOUT=180`,
 `MAX_PARALLEL_INSERT=2` (all overridable via `LIGHTRAG_*` env) — slower but reliable;
-raise on a higher OpenAI tier. To re-run only failed docs without a full re-fetch:
-`POST /documents/reprocess_failed`.
+raise on a higher OpenAI tier. Transient FAILED docs are now recovered **automatically**
+by the auto-sync **auto-heal** (`reprocess_failed`, in place, no full re-fetch — see the
+`failed_count` / `reprocess_failed` bullet above and [[flows/backlog-ingestion]];
+`ScrumAgent-clo`).
 
 ### Implemented (read side — ScrumAgent-r0k / 2jb)
 

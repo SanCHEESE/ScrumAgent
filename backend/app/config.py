@@ -73,6 +73,13 @@ class Settings(BaseSettings):
     rag_auto_sync_interval_hours: float = 6.0  # fixed cadence (not per-project)
     rag_auto_sync_tick_seconds: float = 300.0  # how often the loop re-checks
 
+    # Auto-heal: each tick, when the pipeline is idle and LightRAG has FAILED docs,
+    # call reprocess_failed (re-embed in place — no wipe, no re-fetch). Bounded so
+    # permanently-failing docs (e.g. no embedding access) don't hammer OpenAI forever
+    # — they stay visible in the health `failed` count instead (ScrumAgent-clo).
+    rag_heal_enabled: bool = True
+    rag_heal_max_attempts: int = 3
+
     # --- RAG pipeline coordination (LightRAG is single-flight; ScrumAgent-srp) ---
     # Re-sync clears then re-inserts; LightRAG drains deletes asynchronously and
     # rejects overlapping work (delete status="busy" / insert HTTP 409). The

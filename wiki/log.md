@@ -10,6 +10,37 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-18 — RAG auto-heal: reprocess failed docs in place (ScrumAgent-clo)
+
+Follow-up to `vw3`. The user pushed back on the recovery plan: *why a (clean) resync at
+all — why not just re-sync the failed issues in place and not report an error?* Correct
+instinct. LightRAG's `POST /documents/reprocess_failed` re-embeds only FAILED docs in
+place (no wipe, no Jira/Notion re-fetch) — the cheap recovery a destructive resync is
+*not* for. The app had no automated path to it.
+
+Added a periodic **global auto-heal** in the auto-sync tick (`app/auto_sync.py`): each
+tick, when the LightRAG pipeline is idle and the **instance-wide** FAILED count
+(`RagClient.failed_count()` → `GET /documents/status_counts`) is > 0, it calls
+`RagClient.reprocess_failed()`. A tick that heals skips resync scheduling (pipeline now
+busy). `decide_heal` (pure, unit-tested) bounds it: keep healing while FAILED drops,
+give up after `rag_heal_max_attempts` (default 3) no-progress rounds so a permanently-
+failing backend (e.g. `x0f` no-access) can't hammer OpenAI forever — those docs stay
+visible in the health `failed` count. `heal_failed_docs` is best-effort (swallows
+`RagError` so a LightRAG blip can't kill the tick). New settings `rag_heal_enabled` /
+`rag_heal_max_attempts`; the scheduler takes an injected `rag` collaborator (None ⇒ heal
+off, keeps the pure scheduling tests rag-free). `reprocess_failed` / `status_counts` are
+instance-wide (no project filter — verified live).
+
+What this does NOT change: "Jira/Notion unreachable" still surfaces as a real
+`partial`/`failed` run; the `clear_project failed: busy` → `deferred` fix (vw3) stands;
+destructive resync stays only for edit pickup on the 6h cadence / manual button.
+
+TDD: **269 backend tests green** (+17 — 6 rag adapter, 11 auto-sync incl. `decide_heal`
+convergence/give-up/progress and a scheduler heal-then-skip-resync test). Live LightRAG
+had fully drained earlier (2626/2626 processed, 0 failed, 0 embedding timeouts). Spec:
+`docs/superpowers/specs/2026-06-18-rag-auto-heal-design.md`. See [[modules/rag]],
+[[flows/backlog-ingestion]].
+
 ## 2026-06-18 — RAG sync hardening: defer-on-busy + embedding throughput guard (ScrumAgent-vw3)
 
 Debugged a live eSIM-project error `clear_project failed: LightRAG pipeline still

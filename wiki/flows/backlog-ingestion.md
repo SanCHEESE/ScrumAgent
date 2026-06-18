@@ -77,8 +77,22 @@ project's index fresh without manual action (`ScrumAgent-3mo`):
   a sync or its last `completed`/`partial` run finished ≥ `interval` ago.
 - **`run_due_syncs(...)`** — creates one `IngestionRun(trigger=auto)` per due
   project and schedules it via the shared `IngestionRunner`.
-- **`AutoSyncScheduler.start()/stop()`** — the thin loop seam: `run_due_syncs` then
-  sleep `tick_seconds`; one failed tick logs and continues.
+- **`AutoSyncScheduler.start()/stop()`** — the thin loop seam: each tick runs
+  `heal_failed_docs` then (unless it healed) `run_due_syncs`, then sleeps `tick_seconds`;
+  one failed tick logs and continues.
+
+**Auto-heal (`ScrumAgent-clo`).** Before scheduling resyncs, each tick probes LightRAG:
+if the pipeline is idle and there are FAILED docs (transient embedding failures), it
+calls `reprocess_failed` — re-embedding them **in place**, no wipe and no Jira/Notion
+re-fetch. This is the cheap recovery the destructive resync is *not* for. `decide_heal`
+bounds it with an in-memory attempt budget (`rag_heal_max_attempts`, default 3): it keeps
+healing while the FAILED count drops, but gives up after N no-progress rounds so a
+permanently-failing backend (e.g. no embedding access, `ScrumAgent-x0f`) can't hammer
+OpenAI forever — those docs just stay visible in the health `failed` count. A tick that
+heals skips resync scheduling (the pipeline is now busy). `reprocess_failed` and
+`status_counts` are **instance-wide** (no project filter), so the heal is one global
+operation, not per-project. Destructive `clear`+resync stays only for Jira/Notion
+**edit** pickup on the 6h cadence / manual button.
 
 Cadence is a **backend setting** (`rag_auto_sync_interval_hours`, default 6h), not
 per-project; each project only flips the on/off (`auto_sync_enabled`, default on).

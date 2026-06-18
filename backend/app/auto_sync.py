@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import or_
@@ -24,6 +25,7 @@ from app.ingestion import IngestionRunner
 from app.models import Project
 from app.models.ingestion import IngestionRun
 from app.models.types import IngestionStatus, IngestionTrigger
+from app.rag import RagError
 
 logger = logging.getLogger(__name__)
 
@@ -109,11 +111,73 @@ def run_due_syncs(
     return scheduled
 
 
-class AutoSyncScheduler:
-    """Background loop that periodically schedules due auto-syncs.
+@dataclass
+class HealState:
+    """In-memory throttle for the global reprocess-failed heal (ScrumAgent-clo).
 
-    Thin production seam — the loop body delegates to `run_due_syncs`. One failed
-    tick is logged and the loop continues.
+    Resets on process restart — a restart simply re-attempts, which is harmless.
+    """
+
+    attempts: int = 0
+    last_failed: int = 0
+
+
+def decide_heal(failed: int, state: HealState, *, max_attempts: int) -> bool:
+    """Whether to trigger a `reprocess_failed` now; mutates ``state``.
+
+    - ``failed == 0`` → nothing to heal, reset the episode.
+    - ``failed`` dropped since the last attempt → making progress, keep healing
+      (reset the attempt counter so progress never burns the budget).
+    - no progress → count the attempt and give up once ``attempts`` reaches
+      ``max_attempts`` (e.g. docs with no embedding access — don't hammer OpenAI
+      forever; they stay visible in the health ``failed`` count).
+    """
+    if failed <= 0:
+        state.attempts = 0
+        state.last_failed = 0
+        return False
+    made_progress = state.last_failed > 0 and failed < state.last_failed
+    if made_progress:
+        state.attempts = 1
+    elif state.attempts >= max_attempts:
+        return False
+    else:
+        state.attempts += 1
+    state.last_failed = failed
+    return True
+
+
+async def heal_failed_docs(rag, state: HealState, *, max_attempts: int) -> bool:
+    """One heal pass: when LightRAG is idle and has FAILED docs (and the attempt
+    budget allows), trigger a global `reprocess_failed` (ScrumAgent-clo).
+
+    Returns ``True`` iff a reprocess was kicked off. Best-effort: any ``RagError``
+    is logged and swallowed so a transient LightRAG blip never kills the tick.
+    """
+    try:
+        if await rag.pipeline_busy():
+            return False
+        failed = await rag.failed_count()
+        if not decide_heal(failed, state, max_attempts=max_attempts):
+            return False
+        await rag.reprocess_failed()
+    except RagError as exc:
+        logger.warning("auto-heal skipped: %s", exc)
+        return False
+    logger.info(
+        "auto-heal: reprocessing %d failed doc(s) in place (attempt %d/%d)",
+        failed,
+        state.attempts,
+        max_attempts,
+    )
+    return True
+
+
+class AutoSyncScheduler:
+    """Background loop that periodically heals failed docs and schedules due syncs.
+
+    Thin production seam — the loop body delegates to `heal_failed_docs` and
+    `run_due_syncs`. One failed tick is logged and the loop continues.
     """
 
     def __init__(
@@ -121,10 +185,15 @@ class AutoSyncScheduler:
         settings: Settings,
         session_factory: Callable[[], Session],
         runner: IngestionRunner | None = None,
+        rag=None,
     ) -> None:
         self._settings = settings
         self._session_factory = session_factory
         self._runner = runner or IngestionRunner(settings, session_factory)
+        # Optional heal collaborator. None => auto-heal off (keeps the pure
+        # scheduling tests rag-free); production passes a RagClient.
+        self._rag = rag
+        self._heal_state = HealState()
         self._stop = asyncio.Event()
         self._task: asyncio.Task | None = None
 
@@ -134,12 +203,23 @@ class AutoSyncScheduler:
     async def _loop(self) -> None:
         while not self._stop.is_set():
             try:
-                run_due_syncs(
-                    session_factory=self._session_factory,
-                    runner=self._runner,
-                    settings=self._settings,
-                    now=datetime.now(timezone.utc),
-                )
+                # Heal first: if there are FAILED docs to reprocess, do that and
+                # skip resync this tick — the pipeline is now busy and a resync
+                # would only defer (ScrumAgent-clo).
+                healed = False
+                if self._rag is not None and self._settings.rag_heal_enabled:
+                    healed = await heal_failed_docs(
+                        self._rag,
+                        self._heal_state,
+                        max_attempts=self._settings.rag_heal_max_attempts,
+                    )
+                if not healed:
+                    run_due_syncs(
+                        session_factory=self._session_factory,
+                        runner=self._runner,
+                        settings=self._settings,
+                        now=datetime.now(timezone.utc),
+                    )
             except Exception:  # noqa: BLE001 — one bad tick must not kill the loop
                 logger.exception("auto-sync tick failed")
             try:

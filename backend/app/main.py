@@ -28,8 +28,13 @@ async def lifespan(_app):
     if settings.rag_auto_sync_enabled:
         from app.auto_sync import AutoSyncScheduler
         from app.deps import _session_factory
+        from app.rag import RagClient
 
-        scheduler = AutoSyncScheduler(settings, _session_factory())
+        # The scheduler also runs a periodic global auto-heal (reprocess_failed);
+        # give it a RagClient. Without one, heal is simply off (ScrumAgent-clo).
+        scheduler = AutoSyncScheduler(
+            settings, _session_factory(), rag=RagClient.from_settings(settings)
+        )
         await scheduler.start()
         _app.state.auto_sync_scheduler = scheduler
     try:

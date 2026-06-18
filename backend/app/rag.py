@@ -140,6 +140,36 @@ class RagClient:
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             raise RagError(f"pipeline_busy failed: {exc}") from exc
 
+    async def failed_count(self) -> int:
+        """Global count of docs LightRAG currently has in FAILED status.
+
+        Instance-wide, like `reprocess_failed`: `GET /documents/status_counts`
+        takes no project filter, so the auto-heal works off the whole shared
+        graph (ScrumAgent-clo). LightRAG omits the `failed` key when it is zero."""
+        try:
+            async with self._client_factory() as client:
+                resp = await client.get(
+                    f"{self._base}/documents/status_counts", params=self._params()
+                )
+                resp.raise_for_status()
+                counts = resp.json().get("status_counts") or {}
+                return int(counts.get("failed", 0))
+        except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError) as exc:
+            raise RagError(f"failed_count failed: {exc}") from exc
+
+    async def reprocess_failed(self) -> None:
+        """Re-run the pipeline over all FAILED docs **in place** — no wipe, no
+        re-fetch (`POST /documents/reprocess_failed`). Instance-wide (no project
+        filter). The caller must ensure the pipeline is idle first (ScrumAgent-clo)."""
+        try:
+            async with self._client_factory() as client:
+                resp = await client.post(
+                    f"{self._base}/documents/reprocess_failed", params=self._params()
+                )
+                resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise RagError(f"reprocess_failed failed: {exc}") from exc
+
     def _idle_attempts(self) -> int:
         if self._poll_interval <= 0:
             return 1

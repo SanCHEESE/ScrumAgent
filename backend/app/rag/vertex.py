@@ -124,6 +124,7 @@ class VertexRagBackend:
                 )
             )
         )
+        # TODO(ScrumAgent-65g): wire chunk_size/chunk_overlap via TransformationConfig/ChunkingConfig once validated against live Vertex (no live GCP run yet).
         corpus = await self._call(
             rag.create_corpus,
             display_name=want,

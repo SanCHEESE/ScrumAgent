@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.rag import IndexResult, RagDocument, RagError, RagMedia
+from app.rag import Citation, IndexResult, RagDocument, RagError, RagMedia, RagStatus
 from app.rag.vertex import VertexRagBackend
 
 
@@ -161,7 +161,6 @@ def test_from_settings_requires_gcp_project_id():
 # ---------------------------------------------------------------------------
 # Task 4b: read path + management
 # ---------------------------------------------------------------------------
-from app.rag.base import Citation, RagStatus
 
 
 def test_retrieve_maps_contexts_to_passages_with_citations():

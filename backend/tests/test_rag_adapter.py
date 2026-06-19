@@ -4,11 +4,11 @@ import asyncio
 
 import httpx
 
-from app.rag import Citation, IndexResult, RagClient, RagDocument, RagError, RagStatus, RetrievedPassage
+from app.rag import Citation, IndexResult, LightRagBackend, RagDocument, RagError, RagStatus, RetrievedPassage
 
 
-def _client(handler, *, api_key=None) -> RagClient:
-    return RagClient(
+def _client(handler, *, api_key=None) -> LightRagBackend:
+    return LightRagBackend(
         "http://lightrag:9621",
         api_key=api_key,
         client_factory=lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
@@ -191,8 +191,8 @@ async def _noop_sleep(_seconds: float) -> None:
 
 def _race_client(
     handler, *, api_key=None, busy_retries=5, poll_interval=0.001, max_wait=0.05
-) -> RagClient:
-    return RagClient(
+) -> LightRagBackend:
+    return LightRagBackend(
         "http://lightrag:9621",
         api_key=api_key,
         client_factory=lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),

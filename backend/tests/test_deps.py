@@ -38,8 +38,8 @@ def test_get_db_yields_session_then_closes(monkeypatch):
 def test_get_rag_client_builds():
     from app.config import Settings
     from app import deps
-    from app.rag import RagClient
+    from app.rag import LightRagBackend
 
     s = Settings(_env_file=None, secret_key="x", openai_api_key="k",
                  google_client_id="c", google_client_secret="s")
-    assert isinstance(deps.get_rag_client(s), RagClient)
+    assert isinstance(deps.get_rag_client(s), LightRagBackend)

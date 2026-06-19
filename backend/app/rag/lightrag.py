@@ -1,84 +1,34 @@
-"""App-owned LightRAG adapter (write side). Agents/routers call this, never LightRAG directly.
+"""App-owned LightRAG adapter (text-only). Agents/routers call this via the
+RagBackend protocol, never LightRAG directly.
 
-LightRAG v1.5.3 REST (spike ScrumAgent-m3c): insert via POST /documents/texts; the only
-provenance channel is `file_source` (no metadata dict, no caller doc id, no upsert).
-Workspace is instance-level. We tag every doc `file_source=f"{project_id}::{kind}::{id}"`
-so we can delete/scope/count per project.
-"""
+LightRAG v1.5.3 REST: insert via POST /documents/texts; provenance is the
+`file_source` field "{project_id}::{kind}::{id}" (no metadata dict, no upsert)."""
 from __future__ import annotations
 
 import asyncio
 import math
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
-from dataclasses import dataclass, field
 
 import httpx
 
 from app.config import Settings
-
-_PAGE_SIZE = 200
-_DELETE_BATCH = 100
-# DELETE /documents/delete_document returns 200 with one of these status values.
-_DELETE_ACCEPTED = {None, "deletion_started"}
-_DELETE_BUSY = "busy"
-
-
-class RagError(RuntimeError):
-    """LightRAG adapter failure (transport error or non-2xx response)."""
-
-
-@dataclass
-class RagDocument:
-    text: str
-    source_kind: str
-    source_id: str
-    title: str
-    source_uri: str
+from app.rag.base import (
+    _DELETE_ACCEPTED,
+    _DELETE_BATCH,
+    _DELETE_BUSY,
+    _PAGE_SIZE,
+    Citation,
+    IndexResult,
+    RagDocument,
+    RagError,
+    RagStatus,
+    RetrievedPassage,
+    _file_source,
+    _parse_citation,
+)
 
 
-@dataclass
-class IndexResult:
-    submitted: int
-    track_id: str | None = None
-    failed: int = 0
-    errors: list[str] = field(default_factory=list)
-
-
-@dataclass
-class RagStatus:
-    total: int
-    by_status: dict[str, int]
-    by_source_kind: dict[str, int] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class Citation:
-    source_kind: str
-    source_id: str
-    title: str | None = None
-    source_uri: str | None = None
-
-
-@dataclass
-class RetrievedPassage:
-    text: str
-    score: float
-    citation: Citation
-
-
-def _parse_citation(file_path: str) -> Citation | None:
-    """`file_path` is "{project_id}::{kind}::{id}"; None if it has no usable kind/id."""
-    parts = file_path.split("::")
-    if len(parts) < 3 or not parts[1] or not parts[2]:
-        return None
-    return Citation(source_kind=parts[1], source_id=parts[2])
-
-
-def _file_source(project_id: str, doc: RagDocument) -> str:
-    return f"{project_id}::{doc.source_kind}::{doc.source_id}"
-
-
-class RagClient:
+class LightRagBackend:
     def __init__(
         self,
         base_url: str,
@@ -102,7 +52,7 @@ class RagClient:
         self._sleep = sleep or asyncio.sleep
 
     @classmethod
-    def from_settings(cls, settings: Settings) -> "RagClient":
+    def from_settings(cls, settings: Settings) -> "LightRagBackend":
         return cls(
             settings.lightrag_base_url,
             api_key=settings.lightrag_api_key,

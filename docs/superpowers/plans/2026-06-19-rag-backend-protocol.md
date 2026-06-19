@@ -444,6 +444,8 @@ def get_rag_client(settings: Settings = Depends(get_settings)) -> "RagBackend":
 
 `backend/app/routers/projects.py` — line 61 import becomes `from app.rag import RagError` (drop `RagClient`); add `from app.rag import build_rag_client`; line 1251 `rag_status = await build_rag_client(settings).status(project.id)`.
 
+Then remove the temporary backward-compat shim Task 1 left in `backend/app/rag/__init__.py`: delete the `RagClient = LightRagBackend` alias line and the `"RagClient"` entry from `__all__`. After rewiring, confirm nothing in app code still references the old name — `grep -rn "RagClient" backend/app` must return **no matches** (comments included; the orchestrator/auto_sync docstring mentions were updated or are acceptable prose — if any remain, they are comments only, but prefer zero). The factory + this removal together complete the rename the alias was bridging.
+
 - [ ] **Step 6: Update `backend/tests/test_deps.py`** — line 41 `from app.rag import LightRagBackend`, line 45 `assert isinstance(deps.get_rag_client(s), LightRagBackend)` (factory returns LightRAG by default).
 
 - [ ] **Step 7: Add config defaults test** — append to `backend/tests/test_config.py::test_defaults_applied_when_required_present`:

@@ -69,6 +69,7 @@ See [[modules/_index]] for full list. Highlights:
 ## Decisions
 
 - [[decisions/_index]]
+- [[decisions/2026-06-19-rag-provider-protocol]] — unified RagBackend protocol + two adapters; multimodal doc model (ScrumAgent-65g)
 - [[decisions/2026-06-18-app-owned-orchestrator-not-deepagents-lib]] — MVP runtime app-owned, not deepagents/langgraph
 
 ## Flows

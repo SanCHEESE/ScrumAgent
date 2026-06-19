@@ -1,159 +1,198 @@
 ---
 type: module
 title: "RAG"
-path: "backend/app/rag.py"
+path: "backend/app/rag/"
 language: python
-status: partial
+status: active
 created: 2026-05-10
-updated: 2026-06-18
+updated: 2026-06-19
 depends_on: [llm-gateway]
 used_by: [runtime-orchestrator, user_chat]
 tags: [module, rag]
 ---
 
-# RAG (`rag.py`)
+# RAG (`app/rag/`)
 
-App-owned wrapper around [[concepts/lightrag-multimodal]]. Agents and routers call
-this module, never LightRAG directly.
+App-owned `RagBackend` protocol + two interchangeable adapters (LightRAG and Vertex AI
+RAG Engine). Agents and routers call this module, never a backend service directly.
+Selected by `rag_provider` config; default is `"lightrag"`.
 
 ## Responsibilities
 
-- Index transcripts, summaries, decisions, action items, and later multimodal
-  meeting artifacts such as screen captures or linked documents.
+- Index transcripts, summaries, decisions, action items, and multimodal meeting artifacts
+  such as screen captures or linked documents.
 - Index backlog documents fetched from Jira and Notion at project creation.
 - Retrieve with normalized **citations** (source provenance).
 - Enforce project-scoped filters for user-facing chat retrieval.
-- Translate LightRAG responses into stable app-owned result shapes.
-- Keep LightRAG storage/deployment details behind configuration.
+- Translate backend responses into stable app-owned result shapes.
+- Keep backend storage/deployment details behind configuration.
 
-## Runtime shape
+## Package structure
 
-LightRAG runs as a separate service container. The backend talks to it through
-`app/rag.py` over HTTP. Local development uses a PostgreSQL service for LightRAG's
-storage adapters; the GCP deployment uses Cloud SQL PostgreSQL through the same
-adapter contract.
+| File | Contents |
+|---|---|
+| `__init__.py` | Re-exports: `RagBackend`, `RagDocument`, `RagMedia`, `IndexResult`, `RagStatus`, `Citation`, `RetrievedPassage`, `RagError`, `build_rag_client` |
+| `base.py` | `RagBackend` protocol, shared dataclasses, `RagError`, provenance helpers |
+| `lightrag.py` | `LightRagBackend` — HTTP adapter for LightRAG service (text-only) |
+| `vertex.py` | `VertexRagBackend` — Vertex AI RAG Engine adapter (multimodal) |
+| `factory.py` | `build_rag_client(settings) -> RagBackend` — dispatch on `rag_provider` |
+
+## Document model
+
+```python
+@dataclass(frozen=True)
+class RagMedia:
+    mime_type: str
+    data: bytes | None = None    # inline bytes (uploaded via temp file)
+    uri: str | None = None       # OR a gs://, drive, or http(s) URI
+    filename: str | None = None  # optional original name (extension hint)
+
+@dataclass
+class RagDocument:
+    source_kind: str
+    source_id: str
+    title: str
+    source_uri: str
+    text: str | None = None           # optional (was required pre-65g)
+    media: list[RagMedia] = field(default_factory=list)  # NEW in 65g
+```
+
+Existing callers (Jira/Notion ingestion) pass `media=[]` — backward compatible.
+
+## The protocol
+
+```python
+@runtime_checkable
+class RagBackend(Protocol):
+    async def index_documents(self, project_id: str,
+                              documents: Sequence[RagDocument]) -> IndexResult: ...
+    async def clear_project(self, project_id: str) -> int: ...
+    async def clear_source(self, project_id: str,
+                           source_kind: str, source_id: str) -> int: ...
+    async def status(self, project_id: str) -> RagStatus: ...
+    async def retrieve(self, project_id: str, question: str, *,
+                       k: int = 6) -> list[RetrievedPassage]: ...
+    async def pipeline_busy(self) -> bool: ...
+    async def failed_count(self) -> int: ...
+    async def reprocess_failed(self) -> None: ...
+```
+
+All 8 methods are implemented by both adapters. `runtime_checkable` conformance tests
+assert this for each backend. `build_rag_client(settings)` is the single construction
+point; dispatch is on `settings.rag_provider`.
+
+## Backends
+
+### `LightRagBackend` (default, `rag_provider="lightrag"`)
+
+Talks to the LightRAG service over HTTP. **Text-only**: a document with a non-empty
+`media` list raises `RagError("multimodal ingestion not supported by the LightRAG
+backend")` — no silent drop. Project isolation is via `file_source` prefix
+`"{project_id}::{source_kind}::{source_id}"` (a reference-level tag; the knowledge
+graph is shared across projects — known limitation `ScrumAgent-o39`). Single-flight
+pipeline coordination via polling `GET /documents/pipeline_status` for idle before
+deletes/inserts (`ScrumAgent-srp`). `pipeline_busy`, `failed_count`, and
+`reprocess_failed` are real calls to LightRAG endpoints.
+
+### `VertexRagBackend` (`rag_provider="google"`)
+
+Uses the `vertexai.rag` SDK (lazy-imported; injectable for tests). Blocking SDK calls
+are wrapped in `asyncio.to_thread`; `upload_file` concurrency is bounded by
+`asyncio.Semaphore(vertex_max_concurrency)`. **Multimodal**: text is uploaded as a temp
+`.txt`; media parts are uploaded as temp files with extensions derived from `mime_type`;
+URI-only media uses `rag.import_files`. **Project isolation is native**: one corpus per
+project (`display_name = "{corpus_prefix}-{project_id}"`); `ScrumAgent-o39` is a
+non-issue on this path, there is no shared graph. Provenance via RagFile `display_name`:
+`"{source_kind}::{source_id}"` for text, `"{source_kind}::{source_id}::media{n}"` for
+each media part. Retrieve does not need a cross-project post-filter (corpus is the
+boundary). `pipeline_busy -> False`, `failed_count -> 0`, `reprocess_failed -> None`
+(Approach A honest no-ops — correct for a managed backend; the auto-heal scheduler
+short-circuits harmlessly). Optional SDK install: `requirements-google.txt`
+(`google-cloud-aiplatform[rag]>=1.71`).
 
 ## Configuration boundary
 
 Backend settings stay app-level:
 
-- `RAG_PROVIDER=lightrag`
+- `RAG_PROVIDER=lightrag` (default) or `RAG_PROVIDER=google`
 - `LIGHTRAG_BASE_URL=http://lightrag:9621`
 - `LIGHTRAG_WORKSPACE=scrumagent`
 - `LIGHTRAG_TIMEOUT_SECONDS=10`
 - optional `LIGHTRAG_API_KEY`
 - `RAG_PIPELINE_POLL_SECONDS=1` / `RAG_PIPELINE_MAX_WAIT_SECONDS=120` /
-  `RAG_PIPELINE_BUSY_RETRIES=5` — single-flight pipeline coordination (see API surface)
+  `RAG_PIPELINE_BUSY_RETRIES=5` — LightRAG single-flight pipeline coordination
+- `VERTEX_LOCATION=us-central1` / `VERTEX_EMBEDDING_MODEL=text-multilingual-embedding-002` /
+  `VERTEX_CORPUS_PREFIX=scrumagent` / `VERTEX_CHUNK_SIZE=512` / `VERTEX_CHUNK_OVERLAP=100` /
+  `VERTEX_MAX_CONCURRENCY=4` — used only when `RAG_PROVIDER=google`
+- Auth for Vertex reuses `GCP_PROJECT_ID` + `GOOGLE_APPLICATION_CREDENTIALS` (ADC)
 
 LightRAG storage settings (`PGKVStorage`, `PGVectorStorage`, `PGGraphStorage`,
 `PGDocStatusStorage`, and `POSTGRES_*`) are container-side deployment config, not
-agent/backend module config.
+backend module config.
 
 ## API surface
 
-### Implemented (write side — ScrumAgent-lcw)
+### Write side — ScrumAgent-lcw / ScrumAgent-65g
 
-- `index_documents(project_id, docs)` — batch `POST /documents/texts` to LightRAG,
-  used by the backlog ingestion pipeline.
-- `clear_project(project_id)` — delete all documents whose `file_source` starts
-  with `"{project_id}::"` before a re-sync; LightRAG v1.5.3 has no per-doc metadata
-  or upsert, so delete-then-reinsert is the only safe re-sync path (used by both
-  manual `resync` and periodic `auto` syncs — see [[flows/backlog-ingestion]]).
-- `status(project_id)` — project-scoped document counts, both `by_status`
-  (LightRAG processing state) and `by_source_kind` (parsed from the middle segment
-  of `file_source`, i.e. jira/notion/…); backs the
-  `GET /projects/{id}/knowledge-base/status` endpoint and the live Settings →
-  Knowledge base source counts.
+- `index_documents(project_id, docs)` — batch indexing. LightRAG: `POST /documents/texts`
+  (text only; `media` raises `RagError`). Vertex: `upload_file` per document part
+  (text + media), concurrency-bounded; returns `IndexResult(submitted, failed, errors)`.
+- `clear_project(project_id)` — delete all project documents before a re-sync.
+  LightRAG: paged `POST /documents/paginated` prefix scan + batched
+  `DELETE /documents/delete_document`. Vertex: `rag.list_files` + `rag.delete_file`
+  per file (corpus is kept). Both return count deleted.
+- `clear_source(project_id, source_kind, source_id)` — exact-match delete of a single
+  source. Used by the "Remember" write-back path to dedup before re-inserting.
+- `status(project_id)` — project-scoped document counts (`by_status`, `by_source_kind`);
+  backs `GET /projects/{id}/knowledge-base/status`.
 
-**Project scoping:** LightRAG v1.5.3 has a single shared instance and workspace, so
-project isolation is encoded in the `file_source` field:
-`"{project_id}::{source_kind}::{source_id}"`. This is a reference-level tag, not a
-graph-level boundary — the knowledge graph itself is shared across projects (known
-limitation, tracked as `ScrumAgent-o39`).
+**Project scoping (LightRAG path):** `file_source` = `"{project_id}::{source_kind}::{source_id}"`.
+This is a reference-level tag, not a graph-level boundary — known limitation `ScrumAgent-o39`.
 
-**Single-flight pipeline coordination (`ScrumAgent-srp`):** LightRAG's document
-pipeline is single-flight and drains deletes asynchronously. `DELETE
-/documents/delete_document` returns `200 {status:"deletion_started"}` while work is
-still draining (and `200 {status:"busy"}` — *not* an HTTP error — when it scheduled
-nothing); a `POST /documents/texts` arriving while a delete drains gets `HTTP 409`.
-`_acquire/_release_destructive_busy` couple `pipeline_status.busy` with
-`destructive_busy`, so the adapter polls `GET /documents/pipeline_status` until
-`busy=false` to know a clear has fully drained. The client therefore:
+**Single-flight pipeline coordination (`ScrumAgent-srp`, LightRAG only):** LightRAG's pipeline
+is single-flight. `DELETE /documents/delete_document` returns `200 {status:"deletion_started"}`
+while draining (`status:"busy"` = scheduled nothing). `POST /documents/texts` returns `HTTP 409`
+while busy. The adapter polls `pipeline_status.busy=false` before each delete/insert and retries
+`status:"busy"` deletes and `409` inserts. Bounded by `RAG_PIPELINE_MAX_WAIT_SECONDS` /
+`RAG_PIPELINE_BUSY_RETRIES`; exceeding raises `RagError`.
 
-- waits for idle before every delete batch and **retries** a `status:"busy"` delete
-  (so re-syncs no longer silently drop batches — the original symptom was 308 docs
-  but only 100 deleted);
-- waits for the deletes to drain after `clear_project` returns;
-- waits for idle before each insert and **retries on 409**, bounded by
-  `RAG_PIPELINE_BUSY_RETRIES`.
+- `pipeline_busy()` — LightRAG: one-shot probe of `pipeline_status.busy`; defers a destructive
+  resync if busy (`ScrumAgent-vw3`). Vertex: always `False`.
+- `failed_count()` / `reprocess_failed()` — LightRAG: instance-wide FAILED doc count
+  (`GET /documents/status_counts`) and re-embed-in-place (`POST /documents/reprocess_failed`),
+  used by the auto-heal scheduler (`ScrumAgent-clo`). Vertex: both return `0`/`None`
+  (managed backend; no exposed FAILED state).
 
-Polling is bounded by `RAG_PIPELINE_POLL_SECONDS` / `RAG_PIPELINE_MAX_WAIT_SECONDS`;
-exceeding the wait surfaces a `RagError` (a hard, visible run failure) rather than a
-partial sync.
+### Read side — ScrumAgent-r0k / 2jb
 
-- `pipeline_busy()` — public one-shot probe of `pipeline_status.busy`. Ingestion
-  calls it before a destructive resync/auto clear: if LightRAG is already busy with
-  another job, the run is **deferred** instead of fighting the single-flight pipeline
-  into a 120s timeout-then-`failed` (`ScrumAgent-vw3`; see [[flows/backlog-ingestion]]).
-- `failed_count()` / `reprocess_failed()` — **instance-wide**, no project filter:
-  `GET /documents/status_counts` → the global FAILED count, and
-  `POST /documents/reprocess_failed` → re-embed all FAILED docs **in place** (no wipe,
-  no Jira/Notion re-fetch). The auto-sync scheduler's **auto-heal** uses these to recover
-  transient embedding failures without a destructive resync (`ScrumAgent-clo`; see
-  [[flows/backlog-ingestion]]).
+- `retrieve(project_id, question, k)` → `list[{text, score, citation{source_kind, source_id,
+  title, source_uri}}]`
 
-**Embedding throughput (`ScrumAgent-vw3`):** LightRAG's defaults (8 concurrent
-embedding workers, 30s func / 60s worker timeout) overload OpenAI on a large backlog
-— rate-limit backoff trips the worker timeout, FAILing docs and halting the pipeline
-(observed: 493/2626 docs failed on a 2626-doc Jira backlog). The `lightrag` compose
-service now defaults to `EMBEDDING_FUNC_MAX_ASYNC=2`, `EMBEDDING_TIMEOUT=180`,
-`MAX_PARALLEL_INSERT=2` (all overridable via `LIGHTRAG_*` env) — slower but reliable;
-raise on a higher OpenAI tier. Transient FAILED docs are now recovered **automatically**
-by the auto-sync **auto-heal** (`reprocess_failed`, in place, no full re-fetch — see the
-`failed_count` / `reprocess_failed` bullet above and [[flows/backlog-ingestion]];
-`ScrumAgent-clo`).
+  LightRAG: `POST /query` with `only_need_context=true`, `include_references=true`,
+  `include_chunk_content=true`; post-filters to references whose `file_path` starts with
+  `"{project_id}::"` (anti-leakage; `ScrumAgent-uzx`). No per-reference score from LightRAG;
+  `score=0.0` placeholder, list order is the ranking signal.
 
-### Implemented (read side — ScrumAgent-r0k / 2jb)
-
-- `retrieve(project_id, question, k)` → `list[{text, score, citation{source_kind,
-  source_id, title, source_uri}}]`  
-  Calls LightRAG `/query` with `only_need_context=true` plus `include_references=true`
-  and `include_chunk_content=true` (no LLM call inside LightRAG — we run our own
-  grounded generation). LightRAG v1.5.3 returns
-  `{response, references:[{reference_id, file_path, content:[chunk_text, ...]}]}`
-  (shape confirmed live against `/openapi.json`, ScrumAgent-uzx — **not** the
-  `{data:{chunks}}` the first cut assumed). `retrieve` reads `references`, joins each
-  reference's `content` list into one passage, and **post-filters** to references
-  whose `file_path` starts with `"{project_id}::"`.  
-  - Drops any reference without a recognised citation (no usable `file_path` tag).
-  - Drops references from other projects (cross-project leakage).
-  - Passages keep LightRAG's returned relevance order. The response carries **no
-    per-reference score**, so `score` is a `0.0` placeholder (list order is the
-    ranking signal), not a similarity value.  
-  This post-filter is the **anti-hallucination / no-leakage** guarantee: even though
-  LightRAG's knowledge graph is shared across all projects, `retrieve` only ever
-  surfaces passages provably tagged to the calling project — verified live, where a
-  raw `/query` returned references spanning two projects and `retrieve` kept only the
-  caller's.
-
-- `clear_source(project_id, source_kind, source_id)` — exact-match delete of a
-  single document (by the full `"{project_id}::{source_kind}::{source_id}"`
-  `file_source` key). Used by the Remember write-back path to dedup before
-  re-inserting a Q+A answer into the index (prevents duplicate passages from
-  repeated "Remember" presses on the same message).
+  Vertex: `rag.retrieval_query` against the project's corpus (corpus = project boundary; no
+  post-filter needed). `ctx.score` is real. Uncited contexts (no parseable `source_display_name`)
+  are dropped.
 
 ### Planned
 
-- `index_meeting(...)` — feed normalized meeting artifacts (transcripts, summaries,
-  decisions, action items) into the store. Tracked: `ScrumAgent-o39`.
+- `index_meeting(...)` — feed normalized meeting artifacts (transcripts, summaries, decisions,
+  action items) into the store. Tracked: `ScrumAgent-o39`.
 
 ## Used by
 
 - `ingestion` — indexes Jira/Notion backlog documents on project creation and resync
   (see [[flows/backlog-ingestion]]).
 - `meeting_participation` — will index after analysis (planned).
-- `user_chat` — now live: calls `retrieve(project_id, question, k)` before every
-  answer; calls `clear_source` + `index_documents` on the "Remember" write-back
-  (see [[flows/chat]]).
-- `/settings -> Knowledge base` — now live: real source counts + index health via
-  `status()`, plus an auto-sync toggle and "Sync now" (resync) (`ScrumAgent-bah`).
+- `user_chat` — calls `retrieve(project_id, question, k)` before every answer; calls
+  `clear_source` + `index_documents` on the "Remember" write-back (see [[flows/chat]]).
+- `/settings -> Knowledge base` — real source counts + index health via `status()`, plus
+  auto-sync toggle and "Sync now" (`ScrumAgent-bah`).
+
+## See also
+
+- [[concepts/lightrag-multimodal]] — LightRAG service context
+- [[decisions/2026-06-19-rag-provider-protocol]] — protocol design decision (ScrumAgent-65g)

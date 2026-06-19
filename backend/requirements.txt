@@ -22,6 +22,9 @@ cryptography>=42.0,<46.0    # Fernet — integration secrets encrypted at rest
 # --- auth (JWT) ---
 python-jose[cryptography]>=3.3,<4.0
 
+# --- optional: Vertex AI RAG Engine (RAG_PROVIDER=google) ---
+# See requirements-google.txt — not installed by default (lean image).
+
 # --- tests ---
 pytest>=8.0,<9.0
 httpx>=0.27,<1.0

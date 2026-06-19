@@ -1,0 +1,4 @@
+# Vertex AI RAG Engine adapter deps (ScrumAgent-65g). Installed only when
+# RAG_PROVIDER=google: `pip install -r requirements-google.txt`. Kept out of the
+# lean default set (see requirements.txt) so the default image stays small.
+google-cloud-aiplatform[rag]>=1.71,<2.0

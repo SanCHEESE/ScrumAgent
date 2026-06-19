@@ -3,7 +3,7 @@ type: concept
 title: "LightRAG Multimodal"
 status: developing
 created: 2026-06-17
-updated: 2026-06-17
+updated: 2026-06-19
 tags: [concept, rag, lightrag, multimodal]
 ---
 
@@ -53,3 +53,20 @@ LightRAG through [[modules/rag]].
 - `jira_notion` remains responsible for live Jira and Notion reads/writes.
 - LightRAG results must carry citation metadata before they can be used in final
   chat answers.
+
+## Multimodal ingestion path (as of 2026-06-19)
+
+As of ScrumAgent-65g, multimodal ingestion (images, PDFs, binary media) is handled by
+the **Vertex AI RAG Engine adapter** (`VertexRagBackend`), not by LightRAG.
+
+LightRAG remains **text-only**. Passing a `RagDocument` with a non-empty `media` list to
+`LightRagBackend.index_documents` raises `RagError("multimodal ingestion not supported
+by the LightRAG backend")` — an explicit failure, not a silent drop.
+
+The multimodal `RagDocument` model (`text: str | None`, `media: list[RagMedia]`) is
+defined in the shared `app.rag.base` module and is the same type on both backend paths.
+Existing callers (Jira/Notion ingestion) pass `media=[]` and are unaffected.
+
+Multimodal LightRAG via RAG-Anything / LightRAG file endpoints is out of scope for the
+current implementation. See [[decisions/2026-06-19-rag-provider-protocol]] for the
+full design decision.

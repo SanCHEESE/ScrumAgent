@@ -144,6 +144,10 @@ class VertexRagBackend:
                         display_name=display_name, description=description,
                     )
 
+        async def import_uri(uri):
+            async with self._sem:
+                await self._call(rag.import_files, corpus, [uri])
+
         tasks = []
         for doc in docs:
             base_name = f"{doc.source_kind}::{doc.source_id}"
@@ -159,9 +163,7 @@ class VertexRagBackend:
                                      media.data, suffix)
                     )
                 elif media.uri:
-                    tasks.append(
-                        self._call(rag.import_files, corpus, [media.uri])
-                    )
+                    tasks.append(import_uri(media.uri))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
         errors = [str(r) for r in results if isinstance(r, Exception)]

@@ -29,6 +29,15 @@ def _load_sdk():  # pragma: no cover - exercised only with the real SDK installe
     return vertexai.init, rag
 
 
+def _parse_vertex_citation(display_name: str) -> Citation | None:
+    """display_name is "{kind}::{id}" (media: "{kind}::{id}::media{n}"); first two
+    segments are the provenance. None if either is missing."""
+    parts = display_name.split("::")
+    if len(parts) < 2 or not parts[0] or not parts[1]:
+        return None
+    return Citation(source_kind=parts[0], source_id=parts[1])
+
+
 class VertexRagBackend:
     def __init__(
         self,
@@ -169,6 +178,84 @@ class VertexRagBackend:
         errors = [str(r) for r in results if isinstance(r, Exception)]
         submitted = len(results) - len(errors)
         return IndexResult(submitted=submitted, failed=len(errors), errors=errors)
+
+    # --- read path --------------------------------------------------------
+    async def retrieve(
+        self, project_id: str, question: str, *, k: int = 6
+    ) -> list[RetrievedPassage]:
+        corpus = await self._ensure_corpus(project_id)
+        rag = self._sdk()
+        response = await self._call(
+            rag.retrieval_query,
+            rag_resources=[rag.RagResource(rag_corpus=corpus)],
+            text=question,
+            rag_retrieval_config=rag.RagRetrievalConfig(top_k=k),
+        )
+        passages: list[RetrievedPassage] = []
+        for ctx in self._iter_contexts(response):
+            citation = _parse_vertex_citation(
+                getattr(ctx, "source_display_name", "") or ""
+            )
+            if citation is None:
+                continue   # corpus is the project boundary; drop only uncited hits
+            passages.append(
+                RetrievedPassage(
+                    text=getattr(ctx, "text", "") or "",
+                    score=float(getattr(ctx, "score", 0.0) or 0.0),
+                    citation=citation,
+                )
+            )
+        return passages
+
+    @staticmethod
+    def _iter_contexts(response):
+        """RetrieveContextsResponse exposes contexts at response.contexts.contexts;
+        tolerate a flat list too. Confirmed against the SDK during implementation."""
+        inner = getattr(response, "contexts", None)
+        if inner is None:
+            return []
+        return getattr(inner, "contexts", None) or (inner if isinstance(inner, list) else [])
+
+    # --- management -------------------------------------------------------
+    async def _files(self, corpus: str):
+        rag = self._sdk()
+        return list(await self._call(rag.list_files, corpus))
+
+    async def _delete_matching(self, project_id: str, predicate) -> int:
+        corpus = await self._ensure_corpus(project_id)
+        rag = self._sdk()
+        targets = [f for f in await self._files(corpus)
+                   if predicate(getattr(f, "display_name", "") or "")]
+        for f in targets:
+            await self._call(rag.delete_file, f.name)
+        return len(targets)
+
+    async def clear_project(self, project_id: str) -> int:
+        return await self._delete_matching(project_id, lambda _name: True)
+
+    async def clear_source(
+        self, project_id: str, source_kind: str, source_id: str
+    ) -> int:
+        base = f"{source_kind}::{source_id}"
+        return await self._delete_matching(
+            project_id, lambda name: name == base or name.startswith(f"{base}::")
+        )
+
+    async def status(self, project_id: str) -> RagStatus:
+        corpus = await self._ensure_corpus(project_id)
+        by_status: dict[str, int] = {}
+        by_source_kind: dict[str, int] = {}
+        total = 0
+        for f in await self._files(corpus):
+            total += 1
+            state = getattr(getattr(f, "file_status", None), "state", None) or "active"
+            key = str(state).lower()
+            by_status[key] = by_status.get(key, 0) + 1
+            name = getattr(f, "display_name", "") or ""
+            kind = name.split("::", 1)[0]
+            if kind:
+                by_source_kind[kind] = by_source_kind.get(kind, 0) + 1
+        return RagStatus(total=total, by_status=by_status, by_source_kind=by_source_kind)
 
     # --- LightRAG-shaped methods: honest no-ops on a managed backend ------
     async def pipeline_busy(self) -> bool:

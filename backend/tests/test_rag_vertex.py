@@ -156,3 +156,83 @@ def test_from_settings_requires_gcp_project_id():
                  rag_provider="google", gcp_project_id=None)
     with pytest.raises(RagError):
         VertexRagBackend.from_settings(s)
+
+
+# ---------------------------------------------------------------------------
+# Task 4b: read path + management
+# ---------------------------------------------------------------------------
+from app.rag.base import Citation, RagStatus
+
+
+def test_retrieve_maps_contexts_to_passages_with_citations():
+    fake = FakeRag()
+    fake.query_contexts = [
+        SimpleNamespace(text="Login fails on mobile.", source_uri="u1",
+                        source_display_name="jira::PLAT-12", score=0.81),
+        SimpleNamespace(text="Release notes.", source_uri="u2",
+                        source_display_name="notion::page-7", score=0.55),
+    ]
+    b = _backend(fake)
+    out = asyncio.run(b.retrieve("p1", "why login fails", k=4))
+    assert [p.text for p in out] == ["Login fails on mobile.", "Release notes."]
+    assert out[0].score == 0.81
+    assert out[0].citation == Citation(source_kind="jira", source_id="PLAT-12")
+    assert out[1].citation.source_kind == "notion"
+
+
+def test_retrieve_drops_uncited_contexts():
+    fake = FakeRag()
+    fake.query_contexts = [
+        SimpleNamespace(text="kept", source_uri="u", source_display_name="jira::A", score=0.3),
+        SimpleNamespace(text="nodisplay", source_uri="u", source_display_name="", score=0.2),
+        SimpleNamespace(text="partial", source_uri="u", source_display_name="jira", score=0.1),
+    ]
+    b = _backend(fake)
+    out = asyncio.run(b.retrieve("p1", "q", k=4))
+    assert [p.text for p in out] == ["kept"]
+
+
+def test_clear_project_deletes_all_files_in_corpus():
+    fake = FakeRag()
+    b = _backend(fake)
+    docs = [RagDocument(source_kind="jira", source_id=f"K-{i}", title="t",
+                        source_uri="u", text="x") for i in range(3)]
+    asyncio.run(b.index_documents("p1", docs))
+    count = asyncio.run(b.clear_project("p1"))
+    assert count == 3
+    assert fake.list_files(fake.corpora[0].name) == []
+
+
+def test_clear_source_deletes_only_matching_display_name():
+    fake = FakeRag()
+    b = _backend(fake)
+    docs = [
+        RagDocument(source_kind="note", source_id="msg-1", title="t", source_uri="u", text="a"),
+        RagDocument(source_kind="note", source_id="msg-2", title="t", source_uri="u", text="b"),
+        RagDocument(source_kind="jira", source_id="msg-1", title="t", source_uri="u", text="c"),
+    ]
+    asyncio.run(b.index_documents("p1", docs))
+    count = asyncio.run(b.clear_source("p1", "note", "msg-1"))
+    assert count == 1
+    remaining = sorted(f.display_name for f in fake.list_files(fake.corpora[0].name))
+    assert remaining == ["jira::msg-1", "note::msg-2"]
+
+
+def test_status_counts_total_and_by_source_kind():
+    fake = FakeRag()
+    b = _backend(fake)
+    docs = [
+        RagDocument(source_kind="jira", source_id="A", title="t", source_uri="u", text="a"),
+        RagDocument(source_kind="jira", source_id="B", title="t", source_uri="u", text="b"),
+        RagDocument(source_kind="notion", source_id="C", title="t", source_uri="u", text="c"),
+    ]
+    asyncio.run(b.index_documents("p1", docs))
+    status = asyncio.run(b.status("p1"))
+    assert status.total == 3
+    assert status.by_source_kind == {"jira": 2, "notion": 1}
+    assert status.by_status == {"active": 3}
+
+
+def test_vertex_backend_satisfies_protocol():
+    from app.rag import RagBackend
+    assert isinstance(_backend(FakeRag()), RagBackend)

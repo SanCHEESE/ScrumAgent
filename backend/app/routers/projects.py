@@ -58,7 +58,7 @@ from app.models.types import (
     UsageKind,
     uuid_str,
 )
-from app.rag import RagClient, RagError
+from app.rag import RagError, build_rag_client
 from app.oauth import AGENT_SCOPES, GoogleOAuthClient
 from app.security import sign_oauth_state, verify_oauth_state
 
@@ -1248,7 +1248,7 @@ async def knowledge_base_status(
     )
     rag_out: RagStatusOut | None = None
     try:
-        rag_status = await RagClient.from_settings(settings).status(project.id)
+        rag_status = await build_rag_client(settings).status(project.id)
         rag_out = RagStatusOut(
             total=rag_status.total,
             by_status=rag_status.by_status,

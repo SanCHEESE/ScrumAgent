@@ -191,7 +191,7 @@ class AutoSyncScheduler:
         self._session_factory = session_factory
         self._runner = runner or IngestionRunner(settings, session_factory)
         # Optional heal collaborator. None => auto-heal off (keeps the pure
-        # scheduling tests rag-free); production passes a RagClient.
+        # scheduling tests rag-free); production passes a RagBackend.
         self._rag = rag
         self._heal_state = HealState()
         self._stop = asyncio.Event()

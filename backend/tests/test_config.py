@@ -39,6 +39,9 @@ def test_defaults_applied_when_required_present(monkeypatch):
     assert settings.lightrag_base_url == "http://lightrag:9621"
     assert settings.lightrag_workspace == "scrumagent"
     assert settings.lightrag_timeout_seconds == 10.0
+    assert settings.vertex_location == "us-central1"
+    assert settings.vertex_corpus_prefix == "scrumagent"
+    assert settings.vertex_max_concurrency == 4
 
 
 def test_optional_integrations_default_to_none(monkeypatch):

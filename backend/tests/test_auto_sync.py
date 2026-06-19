@@ -220,7 +220,7 @@ def test_decide_heal_gives_up_after_max_attempts_without_progress():
 
 
 class FakeHealRag:
-    """Minimal RagClient stand-in for the heal step (only the 3 methods it uses)."""
+    """Minimal RagBackend stand-in for the heal step (only the 3 methods it uses)."""
 
     def __init__(self, *, busy=False, failed=0):
         self._busy = busy

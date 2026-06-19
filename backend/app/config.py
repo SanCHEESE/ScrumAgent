@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     frontend_base_url: str = "http://localhost:3000"
     database_url: str = "sqlite:////app/data/db/scrumagent.db"
     rag_storage_path: str = "/app/data/rag"
-    rag_provider: Literal["lightrag"] = "lightrag"
+    rag_provider: Literal["lightrag", "google"] = "lightrag"
     lightrag_base_url: str = "http://lightrag:9621"
     lightrag_workspace: str = "scrumagent"
     lightrag_timeout_seconds: float = 10.0
@@ -87,6 +87,15 @@ class Settings(BaseSettings):
     rag_pipeline_poll_seconds: float = 1.0  # interval between pipeline_status polls
     rag_pipeline_max_wait_seconds: float = 120.0  # give up waiting for idle after this
     rag_pipeline_busy_retries: int = 5  # retries when a delete/insert reports busy/409
+
+    # --- Vertex AI RAG Engine (used only when rag_provider="google"; ScrumAgent-65g) ---
+    # Auth reuses gcp_project_id + google_application_credentials (ADC).
+    vertex_location: str = "us-central1"
+    vertex_embedding_model: str = "text-multilingual-embedding-002"  # text embedding (RU)
+    vertex_corpus_prefix: str = "scrumagent"
+    vertex_chunk_size: int = 512
+    vertex_chunk_overlap: int = 100
+    vertex_max_concurrency: int = 4
 
     # --- GCP deploy (optional) ---
     gcp_project_id: str | None = None

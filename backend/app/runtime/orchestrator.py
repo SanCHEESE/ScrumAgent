@@ -25,7 +25,7 @@ class CapabilityError(RuntimeError):
 
 class _GatedRag:
     """RAG handle exposing only the capabilities allow-listed for one agent.
-    It is a narrow proxy (allowlist), not a filtered view of RagClient — methods
+    It is a narrow proxy (allowlist), not a filtered view of the RAG backend — methods
     the agent isn't granted simply don't exist or raise CapabilityError."""
     def __init__(self, rag, allowed: set[str]):
         self._rag = rag

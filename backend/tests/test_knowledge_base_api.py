@@ -45,7 +45,7 @@ def client(db_session, runner):
     app.dependency_overrides[deps.get_settings] = _settings
     app.dependency_overrides[deps.get_db] = _ov_db
     app.dependency_overrides[deps.get_ingestion_runner] = lambda: runner
-    # status endpoint builds a real RagClient; point it at a transport that returns no docs
+    # status endpoint builds a real RagBackend; point it at a transport that returns no docs
     yield TestClient(app, follow_redirects=False)
     app.dependency_overrides.clear()
 

@@ -9,21 +9,18 @@ from app.rag.base import (
     RagStatus,
     RetrievedPassage,
 )
+from app.rag.factory import build_rag_client
 from app.rag.lightrag import LightRagBackend
-
-# Backward-compatibility alias — app code not yet migrated to LightRagBackend
-# continues to import RagClient; later tasks update each construction site.
-RagClient = LightRagBackend
 
 __all__ = [
     "Citation",
     "IndexResult",
     "LightRagBackend",
     "RagBackend",
-    "RagClient",
     "RagDocument",
     "RagError",
     "RagMedia",
     "RagStatus",
     "RetrievedPassage",
+    "build_rag_client",
 ]

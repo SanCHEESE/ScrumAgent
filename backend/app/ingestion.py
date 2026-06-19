@@ -19,7 +19,7 @@ from app.models import Project
 from app.models.ingestion import IngestionRun
 from app.models.types import IngestionStatus, IngestionTrigger
 from app.notion_client import NotionReadClient
-from app.rag import RagClient, RagDocument
+from app.rag import RagDocument, build_rag_client
 from app.sources import SourceDocument
 
 logger = logging.getLogger(__name__)
@@ -135,7 +135,7 @@ async def run_ingestion(
             session.commit()
             return
 
-        rag = RagClient.from_settings(settings)
+        rag = build_rag_client(settings)
         jira_reader = None
         if project.jira_project_key and project.jira_site_url and credential.jira_api_token:
             jira_reader = JiraReadClient(

@@ -17,3 +17,9 @@ def test_factory_returns_lightrag_by_default():
 
 def test_factory_returns_lightrag_explicit():
     assert isinstance(build_rag_client(_settings(rag_provider="lightrag")), LightRagBackend)
+
+
+def test_factory_returns_vertex_for_google():
+    from app.rag.vertex import VertexRagBackend
+    s = _settings(rag_provider="google", gcp_project_id="proj-123")
+    assert isinstance(build_rag_client(s), VertexRagBackend)

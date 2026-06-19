@@ -2,8 +2,10 @@
 from app.rag.base import (
     Citation,
     IndexResult,
+    RagBackend,
     RagDocument,
     RagError,
+    RagMedia,
     RagStatus,
     RetrievedPassage,
 )
@@ -17,9 +19,11 @@ __all__ = [
     "Citation",
     "IndexResult",
     "LightRagBackend",
+    "RagBackend",
     "RagClient",
     "RagDocument",
     "RagError",
+    "RagMedia",
     "RagStatus",
     "RetrievedPassage",
 ]

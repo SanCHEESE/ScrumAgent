@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import Protocol, runtime_checkable
 
 _PAGE_SIZE = 200
 _DELETE_BATCH = 100
@@ -19,13 +20,23 @@ class RagError(RuntimeError):
     """RAG adapter failure (transport error or non-2xx/SDK error)."""
 
 
+@dataclass(frozen=True)
+class RagMedia:
+    """One non-text artifact attached to a document (image, PDF, Office doc)."""
+    mime_type: str                 # "image/png", "application/pdf", ...
+    data: bytes | None = None      # inline bytes (written to a temp file to upload)
+    uri: str | None = None         # OR a gs://, drive, or http(s) URI
+    filename: str | None = None    # optional original name (extension hint)
+
+
 @dataclass
 class RagDocument:
-    text: str
     source_kind: str
     source_id: str
     title: str
     source_uri: str
+    text: str | None = None
+    media: list[RagMedia] = field(default_factory=list)
 
 
 @dataclass
@@ -56,6 +67,28 @@ class RetrievedPassage:
     text: str
     score: float
     citation: Citation
+
+
+@runtime_checkable
+class RagBackend(Protocol):
+    """The contract every RAG adapter implements. Project scoping is a parameter
+    on every method; isolation is each adapter's concern (LightRAG: file_source
+    prefix; Vertex: one corpus per project)."""
+
+    async def index_documents(
+        self, project_id: str, documents: Sequence[RagDocument]
+    ) -> "IndexResult": ...
+    async def clear_project(self, project_id: str) -> int: ...
+    async def clear_source(
+        self, project_id: str, source_kind: str, source_id: str
+    ) -> int: ...
+    async def status(self, project_id: str) -> "RagStatus": ...
+    async def retrieve(
+        self, project_id: str, question: str, *, k: int = 6
+    ) -> list["RetrievedPassage"]: ...
+    async def pipeline_busy(self) -> bool: ...
+    async def failed_count(self) -> int: ...
+    async def reprocess_failed(self) -> None: ...
 
 
 def _parse_citation(file_path: str) -> Citation | None:

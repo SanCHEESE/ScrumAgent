@@ -141,7 +141,11 @@ class LightRagBackend:
         docs = list(documents)
         if not docs:
             return IndexResult(submitted=0)
-        texts = [f"{d.title}\n{d.source_uri}\n\n{d.text}" for d in docs]
+        if any(d.media for d in docs):
+            raise RagError(
+                "multimodal ingestion not supported by the LightRAG backend"
+            )
+        texts = [f"{d.title}\n{d.source_uri}\n\n{d.text or ''}" for d in docs]
         file_sources = [_file_source(project_id, d) for d in docs]
         try:
             async with self._client_factory() as client:

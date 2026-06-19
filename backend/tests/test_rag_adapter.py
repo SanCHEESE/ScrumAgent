@@ -503,3 +503,21 @@ def test_reprocess_failed_raises_ragerror_on_http_error():
         raise AssertionError("expected RagError")
     except RagError:
         pass
+
+
+def test_index_documents_rejects_media_on_lightrag():
+    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
+        raise AssertionError("must not call LightRAG when media is present")
+
+    from app.rag import RagMedia
+    docs = [
+        RagDocument(
+            source_kind="meeting", source_id="m-1", title="t", source_uri="u",
+            text="notes", media=[RagMedia(mime_type="image/png", data=b"x")],
+        )
+    ]
+    try:
+        asyncio.run(_client(handler).index_documents("proj-1", docs))
+        raise AssertionError("expected RagError for media on LightRAG")
+    except RagError:
+        pass

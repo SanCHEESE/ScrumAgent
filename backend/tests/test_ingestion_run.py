@@ -349,3 +349,32 @@ def test_auto_incremental_reconciles_deletions():
     assert ("jira", "K-9") in rag.cleared_sources        # stale doc removed
     assert ("jira", "K-1") not in rag.cleared_sources    # still present, not touched
     assert run.jira_deleted == 1
+
+
+def test_incremental_jira_outage_does_not_delete_or_advance():
+    from datetime import datetime, timezone
+    from app.models import ProjectSyncState
+
+    class OutageJira:
+        async def fetch_issue_index(self, project_key):
+            raise RagError("jira 503")
+        async def fetch_issues(self, project_key, *, updated_since=None):  # pragma: no cover
+            raise AssertionError("must not fetch bodies after index scan failed")
+
+    db = _session()
+    project = _project(db, with_jira=True)
+    wm = datetime(2026, 6, 3, 0, 0, tzinfo=timezone.utc)
+    db.add(ProjectSyncState(project_id=project.id, jira_synced_until=wm)); db.commit()
+    db.expire_all()  # force re-read from SQLite so watermark comes back tz-naive
+
+    rag = FakeRag()
+    rag.source_ids = {("jira", "K-1")}      # would all look "deleted" on an empty fetch
+    run = _run(db, project, trigger=IngestionTrigger.auto)
+    asyncio.run(execute_run(
+        run, session=db, project=project, rag=rag, jira_reader=OutageJira(),
+    ))
+    assert rag.cleared_sources == []                 # nothing deleted on outage
+    assert run.jira_deleted is None                  # never reached the deletion step
+    assert run.status == IngestionStatus.failed      # the only source failed
+    state = db.get(ProjectSyncState, project.id)
+    assert state.jira_synced_until == wm.replace(tzinfo=None)  # watermark unchanged (SQLite tz-naive)

@@ -232,6 +232,19 @@ def test_status_counts_total_and_by_source_kind():
     assert status.by_status == {"active": 3}
 
 
+def test_list_source_ids_from_corpus_files():
+    fake = FakeRag()
+    backend = _backend(fake)
+    asyncio.run(backend.index_documents("p1", [
+        RagDocument(text="x", source_kind="jira", source_id="PLAT-1",
+                    title="t", source_uri="u"),
+        RagDocument(text="y", source_kind="notion", source_id="pg-9",
+                    title="t2", source_uri="u2"),
+    ]))
+    ids = asyncio.run(backend.list_source_ids("p1"))
+    assert ids == {("jira", "PLAT-1"), ("notion", "pg-9")}
+
+
 def test_vertex_backend_satisfies_protocol():
     from app.rag import RagBackend
     assert isinstance(_backend(FakeRag()), RagBackend)

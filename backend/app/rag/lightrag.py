@@ -255,6 +255,20 @@ class LightRagBackend:
             raise RagError(f"clear_source failed: {exc}") from exc
         return len(ids)
 
+    async def list_source_ids(self, project_id: str) -> set[tuple[str, str]]:
+        """The (kind, id) of every doc currently indexed for the project — the
+        authoritative set used to reconcile deletions (ScrumAgent-3wq)."""
+        out: set[tuple[str, str]] = set()
+        try:
+            async with self._client_factory() as client:
+                async for doc in self._iter_project_docs(client, project_id):
+                    citation = _parse_citation(str(doc.get("file_path", "")))
+                    if citation is not None:
+                        out.add((citation.source_kind, citation.source_id))
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            raise RagError(f"list_source_ids failed: {exc}") from exc
+        return out
+
     async def status(self, project_id: str) -> RagStatus:
         by_status: dict[str, int] = {}
         by_source_kind: dict[str, int] = {}

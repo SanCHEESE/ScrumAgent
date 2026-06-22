@@ -242,6 +242,17 @@ class VertexRagBackend:
             project_id, lambda name: name == base or name.startswith(f"{base}::")
         )
 
+    async def list_source_ids(self, project_id: str) -> set[tuple[str, str]]:
+        """(kind, id) of every RagFile in the project's corpus. Media files share
+        their parent's (kind, id) via _parse_vertex_citation, so the set dedups."""
+        corpus = await self._ensure_corpus(project_id)
+        out: set[tuple[str, str]] = set()
+        for f in await self._files(corpus):
+            citation = _parse_vertex_citation(getattr(f, "display_name", "") or "")
+            if citation is not None:
+                out.add((citation.source_kind, citation.source_id))
+        return out
+
     async def status(self, project_id: str) -> RagStatus:
         corpus = await self._ensure_corpus(project_id)
         by_status: dict[str, int] = {}

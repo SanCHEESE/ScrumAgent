@@ -505,6 +505,23 @@ def test_reprocess_failed_raises_ragerror_on_http_error():
         pass
 
 
+def test_list_source_ids_parses_and_filters_by_project():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/documents/paginated"
+        return httpx.Response(200, json={
+            "documents": [
+                {"id": "1", "file_path": "proj-1::jira::PLAT-1", "status": "processed"},
+                {"id": "2", "file_path": "proj-1::notion::pg-9", "status": "processed"},
+                {"id": "3", "file_path": "proj-2::jira::OTHER-1", "status": "processed"},
+                {"id": "4", "file_path": "proj-1::malformed", "status": "processed"},
+            ],
+            "pagination": {"total_pages": 1},
+        })
+
+    ids = asyncio.run(_client(handler).list_source_ids("proj-1"))
+    assert ids == {("jira", "PLAT-1"), ("notion", "pg-9")}
+
+
 def test_index_documents_rejects_media_on_lightrag():
     def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
         raise AssertionError("must not call LightRAG when media is present")

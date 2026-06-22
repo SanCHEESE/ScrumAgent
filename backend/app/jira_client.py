@@ -5,6 +5,7 @@ Read-only ahead of the planned Rovo client (ScrumAgent-qor).
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 
 import httpx
 
@@ -53,41 +54,56 @@ class JiraReadClient:
             lambda: httpx.AsyncClient(timeout=30.0)
         )
 
-    async def fetch_issues(self, project_key: str) -> list[SourceDocument]:
+    async def fetch_issues(
+        self, project_key: str, *, updated_since: datetime | None = None
+    ) -> list[SourceDocument]:
         # Jira Cloud removed GET /rest/api/3/search (410 Gone, May 2025). The
         # replacement is the enhanced search POST /rest/api/3/search/jql, which
         # pages by an opaque nextPageToken instead of startAt/total
         # (ScrumAgent-2vi).
-        jql = f'project = "{project_key}" ORDER BY created ASC'
+        jql = f'project = "{project_key}"'
+        if updated_since is not None:
+            # JQL `updated` is minute-granular; >= re-fetches the boundary minute
+            # harmlessly (re-index is idempotent). Watermark is UTC (ScrumAgent-3wq).
+            jql += f' AND updated >= "{updated_since:%Y/%m/%d %H:%M}"'
+        jql += " ORDER BY created ASC"
         out: list[SourceDocument] = []
+        async for issue in self._iter_issues(jql, self.FIELDS):
+            out.append(self._to_doc(issue))
+        return out
+
+    async def fetch_issue_index(self, project_key: str) -> dict[str, datetime | None]:
+        """Cheap full scan: {issue_key: updated} for every issue, no bodies. Backs
+        the watermark and the deletion-reconciliation current-set (ScrumAgent-3wq)."""
+        jql = f'project = "{project_key}" ORDER BY created ASC'
+        index: dict[str, datetime | None] = {}
+        async for issue in self._iter_issues(jql, ["updated"]):
+            key = issue.get("key", "")
+            if key:
+                index[key] = parse_iso_dt((issue.get("fields", {}) or {}).get("updated"))
+        return index
+
+    async def _iter_issues(self, jql: str, fields: list[str]):
         next_token: str | None = None
         async with self._client_factory() as client:
             while True:
-                payload: dict = {
-                    "jql": jql,
-                    "maxResults": self._page_size,
-                    "fields": self.FIELDS,
-                }
+                payload: dict = {"jql": jql, "maxResults": self._page_size, "fields": fields}
                 if next_token:
                     payload["nextPageToken"] = next_token
                 resp = await client.post(
                     f"{self._site}/rest/api/3/search/jql",
                     auth=self._auth,
-                    headers={
-                        "Accept": "application/json",
-                        "Content-Type": "application/json",
-                    },
+                    headers={"Accept": "application/json", "Content-Type": "application/json"},
                     json=payload,
                 )
                 resp.raise_for_status()
                 body = resp.json()
                 issues = body.get("issues", []) or []
                 for issue in issues:
-                    out.append(self._to_doc(issue))
+                    yield issue
                 next_token = body.get("nextPageToken")
                 if not next_token or not issues:
                     break
-        return out
 
     def _to_doc(self, issue: dict) -> SourceDocument:
         key = issue.get("key", "")

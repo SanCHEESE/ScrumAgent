@@ -50,8 +50,15 @@ def _project(db, *, with_jira=False, with_notion=False) -> Project:
 
 
 class FakeJira:
-    def __init__(self, docs): self._docs = docs
-    async def fetch_issues(self, project_key): return self._docs
+    def __init__(self, docs, *, index=None):
+        self._docs = docs
+        self._index = index or {}
+    async def fetch_issues(self, project_key, *, updated_since=None):
+        if updated_since is None:
+            return self._docs
+        return [d for d in self._docs if d.updated_at and d.updated_at >= updated_since]
+    async def fetch_issue_index(self, project_key):
+        return dict(self._index)
 
 
 class FakeNotion:
@@ -60,9 +67,14 @@ class FakeNotion:
 
 
 class FakeRag:
-    def __init__(self): self.cleared = []; self.indexed = []
+    def __init__(self):
+        self.cleared = []; self.indexed = []; self.cleared_sources = []
+        self.source_ids = set()                      # what list_source_ids returns
     async def pipeline_busy(self): return False
     async def clear_project(self, pid): self.cleared.append(pid); return 0
+    async def clear_source(self, pid, kind, sid):
+        self.cleared_sources.append((kind, sid)); return 1
+    async def list_source_ids(self, pid): return set(self.source_ids)
     async def index_documents(self, pid, docs):
         self.indexed.append(pid)
         return IndexResult(submitted=len(list(docs)), track_id="t")
@@ -233,3 +245,82 @@ def test_ingestion_run_has_deleted_counters():
     run.notion_deleted = 5
     db.commit(); db.refresh(run)
     assert run.notion_deleted == 5
+
+
+def test_auto_incremental_indexes_only_changed():
+    from datetime import datetime, timezone
+    from app.models import ProjectSyncState
+    db = _session()
+    project = _project(db, with_jira=True)
+    wm = datetime(2026, 6, 3, 0, 0, tzinfo=timezone.utc)
+    db.add(ProjectSyncState(project_id=project.id, jira_synced_until=wm)); db.commit()
+    db.expire_all()  # force re-read from SQLite so watermark comes back tz-naive
+
+    older = datetime(2026, 6, 1, 0, 0, tzinfo=timezone.utc)
+    newer = datetime(2026, 6, 5, 0, 0, tzinfo=timezone.utc)
+    rag = FakeRag()
+    run = _run(db, project, trigger=IngestionTrigger.auto)
+    asyncio.run(execute_run(
+        run, session=db, project=project, rag=rag,
+        jira_reader=FakeJira(
+            [_doc(1, older), _doc(2, newer)],
+            index={"K-1": older, "K-2": newer},
+        ),
+    ))
+    # incremental: no clear_project; only the changed (newer) doc re-indexed
+    assert rag.cleared == []
+    assert ("jira", "K-2") in rag.cleared_sources
+    assert ("jira", "K-1") not in rag.cleared_sources
+    assert run.jira_total == 1 and run.jira_submitted == 1
+    state = db.get(ProjectSyncState, project.id)
+    assert state.jira_synced_until == newer.replace(tzinfo=None)   # advanced to max over full index
+
+
+def test_auto_without_watermark_falls_back_to_full():
+    db = _session()
+    project = _project(db, with_jira=True)        # no ProjectSyncState row
+    rag = FakeRag()
+    run = _run(db, project, trigger=IngestionTrigger.auto)
+    asyncio.run(execute_run(
+        run, session=db, project=project, rag=rag,
+        jira_reader=FakeJira([_doc(1)], index={"K-1": None}),
+    ))
+    assert rag.cleared == [project.id]             # cold start = full destructive run
+    assert run.status == IngestionStatus.completed
+
+
+def test_auto_incremental_notion_indexes_only_changed():
+    """Notion incremental path: tz-aware docs, only those >= watermark are re-indexed."""
+    from datetime import datetime, timezone
+    from app.models import ProjectSyncState
+    db = _session()
+    project = _project(db, with_notion=True)
+    wm = datetime(2026, 6, 3, 0, 0, tzinfo=timezone.utc)
+    db.add(ProjectSyncState(project_id=project.id, notion_synced_until=wm)); db.commit()
+    db.expire_all()  # force re-read from SQLite so watermark comes back tz-naive
+
+    older = datetime(2026, 6, 1, 0, 0, tzinfo=timezone.utc)
+    newer = datetime(2026, 6, 5, 0, 0, tzinfo=timezone.utc)
+
+    class FakeNotionWithDates:
+        def __init__(self, docs): self._docs = docs
+        async def fetch_pages(self, root): return self._docs
+
+    old_doc = SourceDocument(source_kind="notion", source_id="page-1", title="t",
+                             text="b", source_uri="u", updated_at=older)
+    new_doc = SourceDocument(source_kind="notion", source_id="page-2", title="t",
+                             text="b", source_uri="u", updated_at=newer)
+
+    rag = FakeRag()
+    run = _run(db, project, trigger=IngestionTrigger.auto)
+    asyncio.run(execute_run(
+        run, session=db, project=project, rag=rag,
+        notion_reader=FakeNotionWithDates([old_doc, new_doc]),
+    ))
+    # No TypeError from tz-aware vs tz-naive comparison; only changed doc re-indexed
+    assert rag.cleared == []
+    assert ("notion", "page-2") in rag.cleared_sources
+    assert ("notion", "page-1") not in rag.cleared_sources
+    assert run.notion_total == 1 and run.notion_submitted == 1
+    state = db.get(ProjectSyncState, project.id)
+    assert state.notion_synced_until == newer.replace(tzinfo=None)  # advanced

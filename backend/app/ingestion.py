@@ -55,6 +55,14 @@ def _max_updated(docs) -> "datetime | None":
     return max(stamps) if stamps else None
 
 
+def _ensure_utc(dt: "datetime | None") -> "datetime | None":
+    """SQLite returns DateTime(timezone=True) columns tz-naive; treat naive as UTC
+    so watermark comparisons against tz-aware source timestamps don't raise."""
+    if dt is None or dt.tzinfo is not None:
+        return dt
+    return dt.replace(tzinfo=timezone.utc)
+
+
 def _finalize_status(run: IngestionRun, failures: list[str], session: Session) -> None:
     submitted = (run.jira_submitted or 0) + (run.notion_submitted or 0)
     if failures and submitted == 0:
@@ -124,6 +132,68 @@ async def _full_run(
     _finalize_status(run, failures, session)
 
 
+def _needs_full(project: Project, sync_state: ProjectSyncState) -> bool:
+    """A configured source with no watermark forces a full pass (cold start, or a
+    source added after the project was first synced)."""
+    if project.jira_project_key and sync_state.jira_synced_until is None:
+        return True
+    if project.notion_page_id and sync_state.notion_synced_until is None:
+        return True
+    return False
+
+
+async def _incremental_jira(run, project, rag, reader, sync_state) -> None:
+    index = await reader.fetch_issue_index(project.jira_project_key)   # {key: updated}
+    changed = await reader.fetch_issues(
+        project.jira_project_key, updated_since=_ensure_utc(sync_state.jira_synced_until)
+    )
+    for doc in changed:
+        await rag.clear_source(project.id, "jira", doc.source_id)
+    result = await rag.index_documents(project.id, _to_rag(changed))
+    run.jira_total = len(changed)
+    run.jira_submitted = result.submitted
+    stamps = [v for v in index.values() if v is not None]
+    if stamps:
+        sync_state.jira_synced_until = max(stamps)
+
+
+async def _incremental_notion(run, project, rag, reader, sync_state) -> None:
+    docs = await reader.fetch_pages(project.notion_page_id)
+    wm = _ensure_utc(sync_state.notion_synced_until)
+    changed = [d for d in docs if wm is None or (d.updated_at and d.updated_at >= wm)]
+    for doc in changed:
+        await rag.clear_source(project.id, "notion", doc.source_id)
+    result = await rag.index_documents(project.id, _to_rag(changed))
+    run.notion_total = len(changed)
+    run.notion_submitted = result.submitted
+    stamp = _max_updated(docs)
+    if stamp is not None:
+        sync_state.notion_synced_until = stamp
+
+
+async def _incremental_run(
+    run, *, session, project, rag, jira_reader, notion_reader, sync_state
+) -> None:
+    failures: list[str] = []
+    if jira_reader is not None and project.jira_project_key:
+        try:
+            await _incremental_jira(run, project, rag, jira_reader, sync_state)
+        except Exception as exc:  # noqa: BLE001 — isolate per source (outage guard, Task 10)
+            logger.warning("jira incremental failed for %s: %s", project.id, exc)
+            run.jira_total = run.jira_total or 0
+            run.jira_submitted = 0
+            failures.append(f"jira: {exc}")
+    if notion_reader is not None and project.notion_page_id:
+        try:
+            await _incremental_notion(run, project, rag, notion_reader, sync_state)
+        except Exception as exc:  # noqa: BLE001 — isolate per source
+            logger.warning("notion incremental failed for %s: %s", project.id, exc)
+            run.notion_total = run.notion_total or 0
+            run.notion_submitted = 0
+            failures.append(f"notion: {exc}")
+    _finalize_status(run, failures, session)
+
+
 async def execute_run(
     run: IngestionRun,
     *,
@@ -150,6 +220,14 @@ async def execute_run(
             return
 
     sync_state = _get_or_create_sync_state(session, project.id)
+
+    if run.trigger == IngestionTrigger.auto and not _needs_full(project, sync_state):
+        await _incremental_run(
+            run, session=session, project=project, rag=rag,
+            jira_reader=jira_reader, notion_reader=notion_reader, sync_state=sync_state,
+        )
+        return
+
     await _full_run(
         run,
         session=session,

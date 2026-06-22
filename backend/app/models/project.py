@@ -186,6 +186,37 @@ class ProjectAgentSettings(TimestampMixin, Base):
     project: Mapped["Project"] = relationship(back_populates="agent_settings")
 
 
+class ProjectSyncState(TimestampMixin, Base):
+    """Per-project incremental-sync watermarks (1:1 with Project, row created lazily).
+
+    No row means "never incrementally synced" → the next auto run does a full pass
+    and seeds these. Each watermark is the max source timestamp observed so far
+    (Jira ``updated`` / Notion ``last_edited_time``), used as the ``>=`` lower bound
+    on the next incremental fetch. See ScrumAgent-3wq.
+    """
+
+    __tablename__ = "project_sync_state"
+
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id"), primary_key=True
+    )
+    jira_synced_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    notion_synced_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    project: Mapped["Project"] = relationship()
+
+
 class PendingOAuth(UUIDPKMixin, TimestampMixin, Base):
     """One-shot OAuth grant captured before the project exists.
 

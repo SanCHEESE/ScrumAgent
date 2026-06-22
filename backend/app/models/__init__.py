@@ -13,6 +13,7 @@ from app.models.project import (
     ProjectAgentSettings,
     ProjectCredential,
     ProjectMember,
+    ProjectSyncState,
 )
 from app.models.ingestion import IngestionRun
 
@@ -29,6 +30,7 @@ __all__ = [
     "LlmUsage",
     "Project",
     "ProjectAgentSettings",
+    "ProjectSyncState",
     "ProjectMember",
     "PendingProjectMember",
     "ProjectCredential",

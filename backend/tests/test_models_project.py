@@ -151,3 +151,31 @@ def test_project_auto_sync_enabled_defaults_true(db_session):
     db_session.refresh(project)
 
     assert project.auto_sync_enabled is True
+
+
+def test_project_sync_state_defaults_and_persists():
+    from datetime import datetime, timezone
+    from app.database import init_db, make_engine
+    from app.models import Project, ProjectSyncState
+    from app.models.user import User
+    from app.security import crypto
+    from sqlalchemy.orm import sessionmaker
+
+    crypto.configure("test-secret")
+    engine = make_engine("sqlite://")
+    init_db(engine)
+    db = sessionmaker(bind=engine, autoflush=False, future=True)()
+
+    user = User(google_sub="s", email="a@m.com", name="A")
+    db.add(user); db.commit(); db.refresh(user)
+    project = Project(owner_id=user.id, name="P", agent_email="a@m.com")
+    db.add(project); db.commit(); db.refresh(project)
+
+    state = ProjectSyncState(project_id=project.id)
+    db.add(state); db.commit(); db.refresh(state)
+    assert state.jira_synced_until is None
+    assert state.notion_synced_until is None
+
+    state.jira_synced_until = datetime(2026, 6, 1, 10, 0, tzinfo=timezone.utc)
+    db.commit(); db.refresh(state)
+    assert state.jira_synced_until.year == 2026

@@ -57,6 +57,12 @@ services:
       LLM_BINDING_HOST: https://api.openai.com/v1
       LLM_BINDING_API_KEY: ${OPENAI_API_KEY}
       LLM_MODEL: ${LIGHTRAG_LLM_MODEL:-gpt-5.4-mini}
+      # Pin LightRAG's LLM response cache ON. LightRAG's own env.example ships this
+      # as false; pinning true here stops a fresh deploy from silently disabling it,
+      # so repeat LLM calls are served from cache instead of re-billing OpenAI.
+      # (OpenAI's prompt-caching of the static extraction-prompt prefix is automatic
+      # and separate from this; the big ingestion-cost fix was incremental sync, 3wq.)
+      ENABLE_LLM_CACHE: ${LIGHTRAG_ENABLE_LLM_CACHE:-true}
       EMBEDDING_BINDING: openai
       EMBEDDING_BINDING_HOST: https://api.openai.com/v1
       EMBEDDING_BINDING_API_KEY: ${OPENAI_API_KEY}

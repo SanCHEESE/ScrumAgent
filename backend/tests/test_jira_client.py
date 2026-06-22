@@ -126,3 +126,4 @@ def test_fetch_issues_appends_updated_since_clause():
     )
     asyncio.run(client.fetch_issues("PLAT", updated_since=datetime(2026, 6, 1, 10, 30, tzinfo=timezone.utc)))
     assert 'updated >= "2026/06/01 10:30"' in seen["jql"]
+    assert seen["jql"].endswith("ORDER BY created ASC")

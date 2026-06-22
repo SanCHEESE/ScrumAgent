@@ -4,7 +4,7 @@ Read-only ahead of the planned Rovo client (ScrumAgent-qor).
 """
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from datetime import datetime
 
 import httpx
@@ -83,7 +83,7 @@ class JiraReadClient:
                 index[key] = parse_iso_dt((issue.get("fields", {}) or {}).get("updated"))
         return index
 
-    async def _iter_issues(self, jql: str, fields: list[str]):
+    async def _iter_issues(self, jql: str, fields: list[str]) -> AsyncIterator[dict]:
         next_token: str | None = None
         async with self._client_factory() as client:
             while True:

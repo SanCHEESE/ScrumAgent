@@ -10,6 +10,28 @@ tags: [meta, log]
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
 
+## 2026-06-22 — RAG ingestion model + LLM-cache pin (ScrumAgent-50y)
+
+Cost-tuning follow-up to the 3wq fix. Confirmed against the live OpenAI key that the older
+`gpt-5-mini` / `gpt-5-nano` are **retired** (`GET /v1/models/gpt-5-mini` → 404 "That model
+does not exist"); the only available chat models are `gpt-5.4`, `gpt-5.4-mini`, and
+`gpt-5.4-nano`. Kept **`gpt-5.4-mini`** as the LightRAG ingestion/extraction LLM: `gpt-5.4-nano`
+is ~3.7× cheaper ($0.20/$1.25 vs $0.75/$4.50 per 1M in/out) but weaker at entity/relationship
+extraction, and that degradation bakes into the knowledge graph until a full reindex — a
+permanent retrieval-quality ceiling, not worth a one-time saving. Embeddings stay
+`text-embedding-3-small` (already the cheapest sensible OpenAI embedding; `-3-large` ~6.5× for
+marginal recall, `ada-002` legacy).
+
+On caching: OpenAI **prompt-caching** of LightRAG's long static extraction-prompt prefix is
+automatic (no config; cached input ~10× cheaper) — so "mini + caching" was already the live
+state. Separately pinned LightRAG's own response cache **`ENABLE_LLM_CACHE=true`** in
+`docker-compose.yml` (`${LIGHTRAG_ENABLE_LLM_CACHE:-true}`) + documented it in `.env.example`,
+because LightRAG's `env.example` ships it `false` — a fresh deploy could otherwise silently
+disable caching. Behaviour-neutral now (the running container already had the image default
+on); applies explicitly on the next `docker compose up -d --build`. The dominant ingestion
+cost was already removed by incremental sync (3wq). Committed `8771f6e` + `de9bfaa`, pushed to
+`origin/main`. See [[domains/deployment]], [[modules/rag]].
+
 ## 2026-06-22 — Incremental RAG auto-sync (ScrumAgent-3wq)
 
 Every `auto` tick was a destructive clear-then-reindex of the whole backlog, re-running

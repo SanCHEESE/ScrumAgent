@@ -18,6 +18,14 @@ merged fast-forward into `feat/rag-backend-protocol` (local, not pushed).
 
 ## What just shipped (newest first)
 
+- **RAG cost-tuning** (ScrumAgent-50y): confirmed `gpt-5-mini`/`gpt-5-nano` are retired
+  (404 on the key) — only `gpt-5.4` / `gpt-5.4-mini` / `gpt-5.4-nano` exist; kept
+  `gpt-5.4-mini` for ingestion (nano ~3.7× cheaper but degrades graph extraction). OpenAI
+  prompt-caching of the static extraction prefix is automatic; pinned LightRAG
+  `ENABLE_LLM_CACHE=true` in compose (`env.example` ships it `false`) so a fresh deploy
+  can't disable caching. Behaviour-neutral; applies on next `up -d --build`. Pushed to
+  `main` (`8771f6e`, `de9bfaa`). See [[domains/deployment]].
+
 - **Incremental auto-sync** (ScrumAgent-3wq): `auto` now re-extracts only changed items
   and reconciles deletions. `execute_run` routes `auto` → `_incremental_run` unless
   `_needs_full` (a configured source with no watermark → one-time full pass: cold start

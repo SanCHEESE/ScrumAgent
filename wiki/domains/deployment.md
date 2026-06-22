@@ -2,7 +2,7 @@
 type: domain
 title: "Deployment"
 created: 2026-05-10
-updated: 2026-06-17
+updated: 2026-06-22
 tags: [domain, deployment, docker, gcp]
 ---
 
@@ -208,6 +208,7 @@ LIGHTRAG_WORKSPACE=scrumagent
 LIGHTRAG_TIMEOUT_SECONDS=10
 LIGHTRAG_API_KEY=
 LIGHTRAG_LLM_MODEL=gpt-5.4-mini
+LIGHTRAG_ENABLE_LLM_CACHE=true
 LIGHTRAG_EMBEDDING_MODEL=text-embedding-3-small
 LIGHTRAG_EMBEDDING_DIM=1536
 LIGHTRAG_POSTGRES_HOST=postgres

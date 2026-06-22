@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.jira_client import JiraReadClient
-from app.models import Project
+from app.models import Project, ProjectSyncState
 from app.models.ingestion import IngestionRun
 from app.models.types import IngestionStatus, IngestionTrigger
 from app.notion_client import NotionReadClient
@@ -42,6 +42,19 @@ def _to_rag(docs: Sequence[SourceDocument]) -> list[RagDocument]:
     ]
 
 
+def _get_or_create_sync_state(session: Session, project_id: str) -> ProjectSyncState:
+    state = session.get(ProjectSyncState, project_id)
+    if state is None:
+        state = ProjectSyncState(project_id=project_id)
+        session.add(state)
+    return state
+
+
+def _max_updated(docs) -> "datetime | None":
+    stamps = [d.updated_at for d in docs if d.updated_at is not None]
+    return max(stamps) if stamps else None
+
+
 def _finalize_status(run: IngestionRun, failures: list[str], session: Session) -> None:
     submitted = (run.jira_submitted or 0) + (run.notion_submitted or 0)
     if failures and submitted == 0:
@@ -65,6 +78,7 @@ async def _full_run(
     jira_reader,
     notion_reader,
     do_clear: bool,
+    sync_state: ProjectSyncState,
 ) -> None:
     if do_clear:
         try:
@@ -83,6 +97,9 @@ async def _full_run(
             run.jira_total = len(docs)
             result = await rag.index_documents(project.id, _to_rag(docs))
             run.jira_submitted = result.submitted
+            stamp = _max_updated(docs)
+            if stamp is not None:
+                sync_state.jira_synced_until = stamp
         except Exception as exc:  # noqa: BLE001 — isolate per source
             logger.warning("jira ingest failed for %s: %s", project.id, exc)
             run.jira_total = run.jira_total or 0
@@ -95,6 +112,9 @@ async def _full_run(
             run.notion_total = len(docs)
             result = await rag.index_documents(project.id, _to_rag(docs))
             run.notion_submitted = result.submitted
+            stamp = _max_updated(docs)
+            if stamp is not None:
+                sync_state.notion_synced_until = stamp
         except Exception as exc:  # noqa: BLE001 — isolate per source
             logger.warning("notion ingest failed for %s: %s", project.id, exc)
             run.notion_total = run.notion_total or 0
@@ -129,6 +149,7 @@ async def execute_run(
             session.commit()
             return
 
+    sync_state = _get_or_create_sync_state(session, project.id)
     await _full_run(
         run,
         session=session,
@@ -137,6 +158,7 @@ async def execute_run(
         jira_reader=jira_reader,
         notion_reader=notion_reader,
         do_clear=run.trigger in (IngestionTrigger.resync, IngestionTrigger.auto),
+        sync_state=sync_state,
     )
 
 

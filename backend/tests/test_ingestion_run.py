@@ -77,8 +77,9 @@ class BusyRag(FakeRag):
     async def pipeline_busy(self): return True
 
 
-def _doc(i):
-    return SourceDocument(source_kind="jira", source_id=f"K-{i}", title="t", text="b", source_uri="u")
+def _doc(i, updated=None):
+    return SourceDocument(source_kind="jira", source_id=f"K-{i}", title="t",
+                          text="b", source_uri="u", updated_at=updated)
 
 
 def _run(db, project, trigger=IngestionTrigger.created):
@@ -201,6 +202,23 @@ def test_created_ignores_busy_pipeline():
     # only ever runs when the pipeline is expected idle.
     assert run.status == IngestionStatus.completed
     assert rag.indexed == [project.id] and rag.cleared == []
+
+
+def test_full_run_seeds_jira_watermark():
+    from datetime import datetime, timezone
+    from app.models import ProjectSyncState
+    db = _session()
+    project = _project(db, with_jira=True)
+    run = _run(db, project, trigger=IngestionTrigger.created)
+    older = datetime(2026, 6, 1, 10, 0, tzinfo=timezone.utc)
+    newer = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
+    asyncio.run(execute_run(
+        run, session=db, project=project, rag=FakeRag(),
+        jira_reader=FakeJira([_doc(1, older), _doc(2, newer)]),
+    ))
+    state = db.get(ProjectSyncState, project.id)
+    assert state is not None
+    assert state.jira_synced_until == newer.replace(tzinfo=None)
 
 
 def test_ingestion_run_has_deleted_counters():

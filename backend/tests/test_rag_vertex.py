@@ -245,6 +245,19 @@ def test_list_source_ids_from_corpus_files():
     assert ids == {("jira", "PLAT-1"), ("notion", "pg-9")}
 
 
+def test_list_source_ids_deduplicates_media_files():
+    fake = FakeRag()
+    backend = _backend(fake)
+    asyncio.run(backend.index_documents("p1", [
+        RagDocument(text="x", source_kind="jira", source_id="PLAT-1",
+                    title="t", source_uri="u",
+                    media=[RagMedia(mime_type="image/png", data=b"img")]),
+    ]))
+    # index_documents uploads "jira::PLAT-1" (text) + "jira::PLAT-1::media0" (image)
+    ids = asyncio.run(backend.list_source_ids("p1"))
+    assert ids == {("jira", "PLAT-1")}   # deduplicated to one pair
+
+
 def test_vertex_backend_satisfies_protocol():
     from app.rag import RagBackend
     assert isinstance(_backend(FakeRag()), RagBackend)

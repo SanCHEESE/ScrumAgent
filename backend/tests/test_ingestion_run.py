@@ -274,6 +274,8 @@ def test_auto_incremental_indexes_only_changed():
     assert run.jira_total == 1 and run.jira_submitted == 1
     state = db.get(ProjectSyncState, project.id)
     assert state.jira_synced_until == newer.replace(tzinfo=None)   # advanced to max over full index
+    assert run.jira_deleted is None
+    assert run.notion_deleted is None
 
 
 def test_auto_without_watermark_falls_back_to_full():
@@ -324,3 +326,5 @@ def test_auto_incremental_notion_indexes_only_changed():
     assert run.notion_total == 1 and run.notion_submitted == 1
     state = db.get(ProjectSyncState, project.id)
     assert state.notion_synced_until == newer.replace(tzinfo=None)  # advanced
+    assert run.jira_deleted is None
+    assert run.notion_deleted is None

@@ -274,7 +274,7 @@ def test_auto_incremental_indexes_only_changed():
     assert run.jira_total == 1 and run.jira_submitted == 1
     state = db.get(ProjectSyncState, project.id)
     assert state.jira_synced_until == newer.replace(tzinfo=None)   # advanced to max over full index
-    assert run.jira_deleted is None
+    assert run.jira_deleted == 0
     assert run.notion_deleted is None
 
 
@@ -327,4 +327,25 @@ def test_auto_incremental_notion_indexes_only_changed():
     state = db.get(ProjectSyncState, project.id)
     assert state.notion_synced_until == newer.replace(tzinfo=None)  # advanced
     assert run.jira_deleted is None
-    assert run.notion_deleted is None
+    assert run.notion_deleted == 0
+
+
+def test_auto_incremental_reconciles_deletions():
+    from datetime import datetime, timezone
+    from app.models import ProjectSyncState
+    db = _session()
+    project = _project(db, with_jira=True)
+    wm = datetime(2026, 6, 3, 0, 0, tzinfo=timezone.utc)
+    db.add(ProjectSyncState(project_id=project.id, jira_synced_until=wm)); db.commit()
+
+    rag = FakeRag()
+    # RAG still holds K-1 and a stale K-9; the source only knows K-1 now.
+    rag.source_ids = {("jira", "K-1"), ("jira", "K-9")}
+    run = _run(db, project, trigger=IngestionTrigger.auto)
+    asyncio.run(execute_run(
+        run, session=db, project=project, rag=rag,
+        jira_reader=FakeJira([], index={"K-1": wm}),     # nothing changed; K-9 gone
+    ))
+    assert ("jira", "K-9") in rag.cleared_sources        # stale doc removed
+    assert ("jira", "K-1") not in rag.cleared_sources    # still present, not touched
+    assert run.jira_deleted == 1

@@ -144,6 +144,7 @@ def _needs_full(project: Project, sync_state: ProjectSyncState) -> bool:
 
 async def _incremental_jira(run, project, rag, reader, sync_state) -> None:
     index = await reader.fetch_issue_index(project.jira_project_key)   # {key: updated}
+    current_ids = set(index)
     changed = await reader.fetch_issues(
         project.jira_project_key, updated_since=_ensure_utc(sync_state.jira_synced_until)
     )
@@ -152,6 +153,12 @@ async def _incremental_jira(run, project, rag, reader, sync_state) -> None:
     result = await rag.index_documents(project.id, _to_rag(changed))
     run.jira_total = len(changed)
     run.jira_submitted = result.submitted
+    # Reconcile deletions: drop anything in RAG the source no longer has.
+    indexed = {sid for (kind, sid) in await rag.list_source_ids(project.id) if kind == "jira"}
+    removed = indexed - current_ids
+    for sid in removed:
+        await rag.clear_source(project.id, "jira", sid)
+    run.jira_deleted = len(removed)
     stamps = [v for v in index.values() if v is not None]
     if stamps:
         sync_state.jira_synced_until = max(stamps)
@@ -159,6 +166,7 @@ async def _incremental_jira(run, project, rag, reader, sync_state) -> None:
 
 async def _incremental_notion(run, project, rag, reader, sync_state) -> None:
     docs = await reader.fetch_pages(project.notion_page_id)
+    current_ids = {d.source_id for d in docs}
     wm = _ensure_utc(sync_state.notion_synced_until)
     changed = [d for d in docs if wm is None or (d.updated_at and d.updated_at >= wm)]
     for doc in changed:
@@ -166,6 +174,12 @@ async def _incremental_notion(run, project, rag, reader, sync_state) -> None:
     result = await rag.index_documents(project.id, _to_rag(changed))
     run.notion_total = len(changed)
     run.notion_submitted = result.submitted
+    # Reconcile deletions: drop anything in RAG the source no longer has.
+    indexed = {sid for (kind, sid) in await rag.list_source_ids(project.id) if kind == "notion"}
+    removed = indexed - current_ids
+    for sid in removed:
+        await rag.clear_source(project.id, "notion", sid)
+    run.notion_deleted = len(removed)
     stamp = _max_updated(docs)
     if stamp is not None:
         sync_state.notion_synced_until = stamp

@@ -26,6 +26,12 @@ def _handler():
                 {"id": CHILD, "type": "child_page", "has_children": True,
                  "child_page": {"title": "Child Page"}},
             ]})
+        if path == f"/v1/pages/{CHILD}":
+            return httpx.Response(200, json={
+                "id": CHILD,
+                "last_edited_time": "2026-06-11T08:30:00.000Z",
+                "properties": {"Name": {"type": "title", "title": [{"plain_text": "Child Page"}]}},
+            })
         if path == f"/v1/blocks/{CHILD}/children":
             return httpx.Response(200, json={"has_more": False, "next_cursor": None, "results": [
                 {"type": "heading_1", "has_children": False,
@@ -59,3 +65,11 @@ def test_fetch_pages_walks_root_and_child():
 def test_depth_cap_stops_recursion():
     docs = asyncio.run(_client(max_depth=0).fetch_pages(ROOT))
     assert [d.source_id for d in docs] == [ROOT]  # child not visited at depth 0
+
+
+def test_every_page_has_last_edited_time():
+    docs = asyncio.run(_client().fetch_pages(ROOT))
+    by_id = {d.source_id: d for d in docs}
+    assert by_id[ROOT].updated_at is not None
+    assert by_id[CHILD].updated_at is not None      # child timestamp now fetched too
+    assert by_id[CHILD].updated_at > by_id[ROOT].updated_at

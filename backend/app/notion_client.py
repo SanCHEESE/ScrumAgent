@@ -51,12 +51,11 @@ class NotionReadClient:
         return out
 
     async def _walk_page(self, client, page_id, known_title, depth, out) -> None:
-        title = known_title
-        updated = None
-        if title is None:
-            page = await self._get_page(client, page_id)
-            title = self._page_title(page) if page else page_id
-            updated = parse_iso_dt((page or {}).get("last_edited_time"))
+        # Always fetch the page object: incremental sync needs every page's
+        # last_edited_time, not just the root's (ScrumAgent-3wq).
+        page = await self._get_page(client, page_id)
+        title = known_title or (self._page_title(page) if page else page_id)
+        updated = parse_iso_dt((page or {}).get("last_edited_time"))
         text, child_pages = await self._collect(client, page_id)
         out.append(SourceDocument(
             source_kind="notion",

@@ -201,3 +201,14 @@ def test_created_ignores_busy_pipeline():
     # only ever runs when the pipeline is expected idle.
     assert run.status == IngestionStatus.completed
     assert rag.indexed == [project.id] and rag.cleared == []
+
+
+def test_ingestion_run_has_deleted_counters():
+    db = _session()
+    project = _project(db, with_jira=True)
+    run = _run(db, project)
+    assert run.jira_deleted is None
+    assert run.notion_deleted is None
+    run.jira_deleted = 3
+    db.commit(); db.refresh(run)
+    assert run.jira_deleted == 3

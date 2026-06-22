@@ -33,6 +33,8 @@ class IngestionRun(UUIDPKMixin, TimestampMixin, Base):
     jira_submitted: Mapped[int | None] = mapped_column(Integer)
     notion_total: Mapped[int | None] = mapped_column(Integer)
     notion_submitted: Mapped[int | None] = mapped_column(Integer)
+    jira_deleted: Mapped[int | None] = mapped_column(Integer)
+    notion_deleted: Mapped[int | None] = mapped_column(Integer)
     failed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     error: Mapped[str | None] = mapped_column(Text)
     errors: Mapped[list | None] = mapped_column(JSONType)

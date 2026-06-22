@@ -15,8 +15,8 @@ from app.database import make_engine
 
 def main() -> None:
     engine = make_engine(Settings().database_url)
-    existing = {c["name"] for c in inspect(engine).get_columns("ingestion_runs")}
     with engine.begin() as conn:
+        existing = {c["name"] for c in inspect(conn).get_columns("ingestion_runs")}
         if "jira_deleted" not in existing:
             conn.execute(text("ALTER TABLE ingestion_runs ADD COLUMN jira_deleted INTEGER"))
             print("added ingestion_runs.jira_deleted")

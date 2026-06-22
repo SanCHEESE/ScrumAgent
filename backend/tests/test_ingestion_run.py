@@ -212,3 +212,6 @@ def test_ingestion_run_has_deleted_counters():
     run.jira_deleted = 3
     db.commit(); db.refresh(run)
     assert run.jira_deleted == 3
+    run.notion_deleted = 5
+    db.commit(); db.refresh(run)
+    assert run.notion_deleted == 5

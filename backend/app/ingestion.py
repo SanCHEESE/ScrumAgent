@@ -42,34 +42,31 @@ def _to_rag(docs: Sequence[SourceDocument]) -> list[RagDocument]:
     ]
 
 
-async def execute_run(
+def _finalize_status(run: IngestionRun, failures: list[str], session: Session) -> None:
+    submitted = (run.jira_submitted or 0) + (run.notion_submitted or 0)
+    if failures and submitted == 0:
+        run.status = IngestionStatus.failed
+    elif failures:
+        run.status = IngestionStatus.partial
+    else:
+        run.status = IngestionStatus.completed
+    run.failed_count = len(failures)
+    run.errors = failures or None
+    run.finished_at = _now()
+    session.commit()
+
+
+async def _full_run(
     run: IngestionRun,
     *,
     session: Session,
     project: Project,
     rag,
-    jira_reader=None,
-    notion_reader=None,
+    jira_reader,
+    notion_reader,
+    do_clear: bool,
 ) -> None:
-    run.status = IngestionStatus.running
-    run.started_at = _now()
-    session.commit()
-
-    if run.trigger in (IngestionTrigger.resync, IngestionTrigger.auto):
-        # Resync is destructive (clear-then-reindex). If LightRAG is already busy
-        # with another job, don't fight its single-flight pipeline — the bounded
-        # idle-wait would just time out and land as a scary `failed`. Defer instead;
-        # the scheduler retries on the next tick (ScrumAgent-vw3). A failing probe
-        # is treated as "proceed" so a genuinely-down LightRAG still surfaces below.
-        try:
-            busy = await rag.pipeline_busy()
-        except Exception:  # noqa: BLE001 — probe failure must not block the run
-            busy = False
-        if busy:
-            run.status = IngestionStatus.deferred
-            run.finished_at = _now()
-            session.commit()
-            return
+    if do_clear:
         try:
             await rag.clear_project(project.id)
         except Exception as exc:  # noqa: BLE001 — surface as a hard failure
@@ -80,7 +77,6 @@ async def execute_run(
             return
 
     failures: list[str] = []
-
     if jira_reader is not None and project.jira_project_key:
         try:
             docs = await jira_reader.fetch_issues(project.jira_project_key)
@@ -105,17 +101,43 @@ async def execute_run(
             run.notion_submitted = 0
             failures.append(f"notion: {exc}")
 
-    submitted = (run.jira_submitted or 0) + (run.notion_submitted or 0)
-    if failures and submitted == 0:
-        run.status = IngestionStatus.failed
-    elif failures:
-        run.status = IngestionStatus.partial
-    else:
-        run.status = IngestionStatus.completed
-    run.failed_count = len(failures)
-    run.errors = failures or None
-    run.finished_at = _now()
+    _finalize_status(run, failures, session)
+
+
+async def execute_run(
+    run: IngestionRun,
+    *,
+    session: Session,
+    project: Project,
+    rag,
+    jira_reader=None,
+    notion_reader=None,
+) -> None:
+    run.status = IngestionStatus.running
+    run.started_at = _now()
     session.commit()
+
+    if run.trigger in (IngestionTrigger.resync, IngestionTrigger.auto):
+        # Don't fight LightRAG's single-flight pipeline; defer (ScrumAgent-vw3).
+        try:
+            busy = await rag.pipeline_busy()
+        except Exception:  # noqa: BLE001 — probe failure must not block the run
+            busy = False
+        if busy:
+            run.status = IngestionStatus.deferred
+            run.finished_at = _now()
+            session.commit()
+            return
+
+    await _full_run(
+        run,
+        session=session,
+        project=project,
+        rag=rag,
+        jira_reader=jira_reader,
+        notion_reader=notion_reader,
+        do_clear=run.trigger in (IngestionTrigger.resync, IngestionTrigger.auto),
+    )
 
 
 async def run_ingestion(

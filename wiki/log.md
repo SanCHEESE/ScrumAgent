@@ -2,13 +2,41 @@
 type: meta
 title: "Wiki Log"
 created: 2026-05-10
-updated: 2026-06-18
+updated: 2026-06-22
 tags: [meta, log]
 ---
 
 # Wiki Log
 
 Append-only chronological record. Newest entries on top. Never edit past entries.
+
+## 2026-06-22 — Incremental RAG auto-sync (ScrumAgent-3wq)
+
+Every `auto` tick was a destructive clear-then-reindex of the whole backlog, re-running
+LightRAG LLM entity-extraction over everything regardless of what changed — the dominant
+OpenAI cost (~$100/3 days on a ~2600-doc backlog). Now `auto` is **incremental**: `execute_run`
+routes to `_incremental_run` unless `_needs_full` (a configured source with no watermark → a
+one-time full pass: cold start, or a source added later); `resync`/`created` stay full;
+incremental never calls `clear_project`.
+
+New `ProjectSyncState` (1:1 table) holds data-driven per-source watermarks (`jira_synced_until`
+= max issue `updated`, `notion_synced_until` = max page `last_edited_time`), seeded on full
+runs and advanced over the full current set. Jira detects change via a cheap `fetch_issue_index`
+(keys+`updated`, no bodies) + `updated_since` JQL (minute-granular, `>=`); Notion's tree walk
+now fetches every page's `last_edited_time`. Deletions reconciled via new
+`RagBackend.list_source_ids` (both adapters): indexed minus current → `clear_source`, counted
+in new `IngestionRun.jira_deleted`/`notion_deleted`. An **outage guard** keeps deletion +
+watermark advance inside the per-source `try` after a successful fetch, so a transient
+Jira/Notion failure never reads as "everything deleted". SQLite returns the
+`DateTime(timezone=True)` watermark tz-naive on a fresh-session read, so a local `_ensure_utc`
+normalizes before comparison (importing `auto_sync._as_utc` is circular). Belt-and-braces:
+`.env` widens `RAG_AUTO_SYNC_INTERVAL_HOURS` 6h→24h.
+
+Built subagent-driven over 10 TDD tasks; **303 backend tests green**; opus whole-branch review
+= merge-ready (no Critical/Important). Merged fast-forward into `feat/rag-backend-protocol`
+(local; not pushed — 65g+3wq → main is the next integration step). Deferred cosmetic cleanups:
+`ScrumAgent-ezp`. See [[flows/backlog-ingestion]], [[modules/rag]]; spec
+`docs/superpowers/specs/2026-06-22-incremental-rag-sync-design.md`.
 
 ## 2026-06-18 — RAG auto-heal: reprocess failed docs in place (ScrumAgent-clo)
 

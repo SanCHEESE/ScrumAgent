@@ -5,7 +5,7 @@ path: "backend/app/rag/"
 language: python
 status: active
 created: 2026-05-10
-updated: 2026-06-19
+updated: 2026-06-22
 depends_on: [llm-gateway]
 used_by: [runtime-orchestrator, user_chat]
 tags: [module, rag]
@@ -69,6 +69,7 @@ class RagBackend(Protocol):
     async def clear_project(self, project_id: str) -> int: ...
     async def clear_source(self, project_id: str,
                            source_kind: str, source_id: str) -> int: ...
+    async def list_source_ids(self, project_id: str) -> set[tuple[str, str]]: ...
     async def status(self, project_id: str) -> RagStatus: ...
     async def retrieve(self, project_id: str, question: str, *,
                        k: int = 6) -> list[RetrievedPassage]: ...
@@ -77,7 +78,7 @@ class RagBackend(Protocol):
     async def reprocess_failed(self) -> None: ...
 ```
 
-All 8 methods are implemented by both adapters. `runtime_checkable` conformance tests
+All 9 methods are implemented by both adapters. `runtime_checkable` conformance tests
 assert this for each backend. `build_rag_client(settings)` is the single construction
 point; dispatch is on `settings.rag_provider`.
 
@@ -142,7 +143,12 @@ backend module config.
   `DELETE /documents/delete_document`. Vertex: `rag.list_files` + `rag.delete_file`
   per file (corpus is kept). Both return count deleted.
 - `clear_source(project_id, source_kind, source_id)` — exact-match delete of a single
-  source. Used by the "Remember" write-back path to dedup before re-inserting.
+  source. Used by the "Remember" write-back path to dedup before re-inserting, and by
+  incremental sync to clear a changed/removed item before re-indexing.
+- `list_source_ids(project_id)` → `set[(source_kind, source_id)]` — every source currently
+  indexed for the project. Backs incremental deletion reconciliation (`ScrumAgent-3wq`):
+  LightRAG parses each `file_path` via `_parse_citation`; Vertex parses each RagFile
+  `display_name` via `_parse_vertex_citation` (media files dedup to their parent `(kind,id)`).
 - `status(project_id)` — project-scoped document counts (`by_status`, `by_source_kind`);
   backs `GET /projects/{id}/knowledge-base/status`.
 
@@ -184,7 +190,8 @@ while busy. The adapter polls `pipeline_status.busy=false` before each delete/in
 
 ## Used by
 
-- `ingestion` — indexes Jira/Notion backlog documents on project creation and resync
+- `ingestion` — indexes Jira/Notion backlog on creation/resync, and **incrementally** on
+  auto-sync (changed-only + `list_source_ids` deletion reconciliation, `ScrumAgent-3wq`)
   (see [[flows/backlog-ingestion]]).
 - `meeting_participation` — will index after analysis (planned).
 - `user_chat` — calls `retrieve(project_id, question, k)` before every answer; calls
